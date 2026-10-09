@@ -1,0 +1,27 @@
+{
+  "name": "critter-generator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "npm run build && node server/index.mjs",
+    "serve": "node server/index.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test": "node --test tests/*.test.mjs",
+    "verify:http": "node scripts/verify-http.mjs",
+    "stop": "node scripts/stop.mjs"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "manifold-3d": "3.5.3",
+    "three": "0.186.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "vite": "8.3.0"
+  }
+}
