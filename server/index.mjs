@@ -2,27 +2,42 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { Settings, GenerationSpecimen, specimenSchema, creaturePrompt, illustrationPrompt, example } from '../shared/specimen.mjs';
 import { Codex, imageBytes, safeError } from './codex.mjs';
 import { Store } from './store.mjs';
+import { createAccessVerifier } from './access.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const port = Number(process.env.PORT || 4329);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('PORT must be an integer from 1024 to 65535.');
-const store = new Store(path.join(root, '.local'));
+const store = new Store(process.env.CRITTER_DATA_DIR || path.join(root, '.local'));
 const codex = new Codex(path.join(store.root, 'workspace'));
 const app = express();
 const stopToken = randomUUID();
 app.disable('x-powered-by');
 const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, 'http://127.0.0.1:5173', 'http://localhost:5173']);
-app.use((req, res, next) => {
-  if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host)) return res.status(403).json({ error: 'Localhost access only.' });
+const localHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+// Optional public hosting behind Cloudflare Access (e.g. https://critter.lionfeather.dev).
+// Requests for that host must carry a valid Access token; localhost stays as before.
+const publicOrigin = process.env.PUBLIC_ORIGIN ? new URL(process.env.PUBLIC_ORIGIN) : null;
+const verifyAccess = publicOrigin
+  ? createAccessVerifier({ teamDomain: process.env.ACCESS_TEAM_DOMAIN, audience: process.env.ACCESS_AUD })
+  : null;
+if (publicOrigin) origins.add(publicOrigin.origin);
+app.use(async (req, res, next) => {
+  const isPublic = publicOrigin && req.headers.host === publicOrigin.host;
+  if (!isPublic && !localHosts.includes(req.headers.host)) return res.status(403).json({ error: 'Localhost access only.' });
+  if (isPublic) {
+    try { await verifyAccess(req.headers['cf-access-jwt-assertion']); } catch { return res.status(403).json({ error: 'Your sign-in has expired. Reload the page to sign in again.' }); }
+  }
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  // Keep proxies such as Cloudflare from injecting scripts (e.g. analytics beacons) into pages.
+  res.setHeader('Cache-Control', 'no-transform');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
   if (req.headers.origin && !origins.has(req.headers.origin)) return res.status(403).json({ error: 'Cross-origin access denied.' });
-  if (!['GET', 'HEAD'].includes(req.method) && req.headers['x-critter-request'] !== '1') return res.status(403).json({ error: 'Missing local app request header.' });
+  if (!['GET', 'HEAD'].includes(req.method) && req.headers['x-critter-request'] !== '1') return res.status(403).json({ error: 'Missing app request header.' });
   next();
 });
 app.use(express.json({ limit: '16kb' }));
@@ -36,6 +51,13 @@ if (!store.get('specimens', 'example-lantern')) {
   const print = await store.model('example-lantern', example.anatomy, 100);
   store.save('specimens', 'example-lantern', { ...example, id: 'example-lantern', demo: true, image: false, print,
     settings: { prompt: '', absurdity: 65, deviancy: 35, lethality: 20, height: 100 }, createdAt: '2026-01-01T00:00:00.000Z' });
+}
+// The example ships with a Codex-generated portrait so new installs aren't blank.
+const examplePortrait = path.join(root, 'server/assets/example-lantern-portrait.png');
+const exampleRecord = store.get('specimens', 'example-lantern');
+if (!exampleRecord.image && existsSync(examplePortrait)) {
+  store.portrait('example-lantern', readFileSync(examplePortrait));
+  store.save('specimens', 'example-lantern', { ...exampleRecord, image: true, imageError: null });
 }
 
 app.get('/api/status', (_req, res) => res.json({ ...codex.state, activeJob: current?.job.id || null }));
@@ -86,6 +108,18 @@ app.post('/api/jobs/:id/cancel', (req, res) => {
 });
 
 function update(job, data) { Object.assign(job, data); store.save('jobs', job.id, job); }
+const DESIGN_ATTEMPTS = 3;
+async function designWithRetries(job, settings, signal) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await codex.run({ prompt: creaturePrompt(settings), schema: specimenSchema, signal,
+        onThread: threadId => update(job, { designThreadId: threadId }) });
+    } catch (e) {
+      if (e.code !== 'runaway_output' || attempt >= DESIGN_ATTEMPTS || signal.aborted) throw e;
+      update(job, { message: `Codex stalled; trying again (attempt ${attempt + 1} of ${DESIGN_ATTEMPTS})…` });
+    }
+  }
+}
 function startJob(settings, existing) {
   const job = { id: randomUUID(), status: 'queued', stage: 'design', message: 'Connecting to Codex…', createdAt: new Date().toISOString(), specimenId: existing?.id || null };
   const controller = new AbortController();
@@ -98,8 +132,7 @@ async function execute(job, settings, existing, signal) {
   try {
     update(job, { status: 'running', message: 'Inventing anatomy and writing field notes…' });
     if (!existing) {
-      const generated = await codex.run({ prompt: creaturePrompt(settings), schema: specimenSchema, signal,
-        onThread: threadId => update(job, { designThreadId: threadId }) });
+      const generated = await designWithRetries(job, settings, signal);
       if (signal.aborted) throw new Error('Generation cancelled.');
       let parsed;
       try { parsed = GenerationSpecimen.parse(JSON.parse(generated.text)); } catch { throw new Error('Codex returned an invalid specimen. Please try again.'); }

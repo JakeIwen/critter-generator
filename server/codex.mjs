@@ -4,13 +4,15 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
+const RUNAWAY_WHITESPACE = 400;
+
 export const safeError = (error) => String(error?.message || error)
   .replace(/\bsk-[\w-]+/g, '[redacted]').replace(/Bearer\s+[^\s"']+/gi, 'Bearer [redacted]').slice(0, 900);
 
 export class Codex {
   constructor(cwd) {
     this.cwd = cwd; this.pending = new Map(); this.sequence = 0; this.active = null;
-    this.state = { connected: false, model: null, reason: 'Connecting to your local Codex login…' };
+    this.state = { connected: false, model: null, reason: 'Connecting to Codex…' };
   }
   send(message) { this.child.stdin.write(JSON.stringify(message) + '\n'); }
   rpc(method, params = {}) {
@@ -83,6 +85,17 @@ export class Codex {
     }
     const a = this.active, p = message.params;
     if (!a || p?.threadId !== a.threadId) return;
+    if (message.method === 'item/agentMessage/delta' && typeof p.delta === 'string') {
+      // Under a strict output schema the model sometimes stops writing values and
+      // streams whitespace until the turn times out. Give up on that attempt early.
+      a.blankRun = /\S/.test(p.delta) ? p.delta.length - p.delta.trimEnd().length : (a.blankRun || 0) + p.delta.length;
+      if (a.blankRun > RUNAWAY_WHITESPACE) {
+        this.active = null;
+        if (a.turnId) this.rpc('turn/interrupt', { threadId: a.threadId, turnId: a.turnId }).catch(() => {});
+        a.reject(Object.assign(new Error('Codex stalled while writing the specimen.'), { code: 'runaway_output' }));
+        return;
+      }
+    }
     if (message.method === 'turn/started') { a.turnId = p.turn.id; a.onTurn?.(a.turnId); }
     if (message.method === 'item/started' && p.item?.type === 'imageGeneration') a.onProgress?.('Painting the specimen portrait…');
     if (message.method === 'item/completed') {

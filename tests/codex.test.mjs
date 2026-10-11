@@ -21,6 +21,22 @@ test('failed turns reject and unsupported requests are never approved', () => {
   client.receive({id:1,method:'item/commandExecution/requestApproval',params:{}});
   assert.equal(reply.result.decision,'decline');
 });
+test('a turn that streams endless whitespace is interrupted and rejected as runaway', () => {
+  const client = new Codex('/tmp'); let error, interrupted;
+  client.rpc = (method, params) => { interrupted = { method, params }; return Promise.resolve(); };
+  client.active = { threadId:'owned', turnId:'t1', messages:[], images:[], resolve:()=>{}, reject:e=>error=e };
+  client.receive({method:'item/agentMessage/delta',params:{threadId:'owned',delta:'{"fieldNote": '}});
+  for (let i = 0; i < 100 && !error; i++) client.receive({method:'item/agentMessage/delta',params:{threadId:'owned',delta:' \n  '}});
+  assert.equal(error.code, 'runaway_output');
+  assert.deepEqual(interrupted, { method:'turn/interrupt', params:{ threadId:'owned', turnId:'t1' } });
+  assert.equal(client.active, null);
+});
+test('ordinary whitespace between JSON values does not trip the runaway check', () => {
+  const client = new Codex('/tmp'); let error;
+  client.active = { threadId:'owned', messages:[], images:[], resolve:()=>{}, reject:e=>error=e };
+  for (let i = 0; i < 500; i++) client.receive({method:'item/agentMessage/delta',params:{threadId:'owned',delta:i % 3 ? '  ' : '"word", '}});
+  assert.equal(error, undefined); assert.ok(client.active);
+});
 test('image failures are explicit and credentials are redacted from errors', async () => {
   await assert.rejects(imageBytes([]),/no image/);
   await assert.rejects(imageBytes([{result:'not an image',failure:null}]),/no image/);

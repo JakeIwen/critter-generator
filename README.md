@@ -84,6 +84,20 @@ tar -czf "../critter-generator-backup-$(date +%Y%m%d-%H%M%S).tar.gz" .local
 npm start
 ```
 
+## Hosting behind Cloudflare Access
+
+The server still binds only `127.0.0.1`. To serve it through a Cloudflare Tunnel, set:
+
+- `PUBLIC_ORIGIN`: the public URL, e.g. `https://critter.lionfeather.dev`
+- `ACCESS_TEAM_DOMAIN`: e.g. `<team>.cloudflareaccess.com`
+- `ACCESS_AUD`: the Access application's audience tag
+- `CRITTER_DATA_DIR` (optional): data directory instead of `.local/`
+
+Requests for the public host must carry a valid `Cf-Access-Jwt-Assertion`; the server checks its
+signature against the team's published keys, plus issuer, audience, and expiry. Localhost requests
+work as before. Everyone allowed through Access shares one collection and the host's Codex login.
+The lionfeather.dev deployment lives in the `lionfeather-edge` repository (`apps/critter/`).
+
 ## 3D printing
 
 The artwork and sculpture share a structured anatomy specification. **The sculpture is a simplified
@@ -139,6 +153,7 @@ Live browser verification covered generation, interruption, collection navigatio
 - `server/geometry.mjs`: shared solid/SCAD recipe and binary STL writer; built in a worker thread.
 - `server/store.mjs`: SQLite metadata and asset persistence.
 - `server/index.mjs`: loopback-only Express server and generation lifecycle.
+- `server/access.mjs`: Cloudflare Access token verification for optional public hosting.
 - `src/`: frontend and Three.js viewer, bundled locally with Vite.
 
 The app follows the [official Codex app-server protocol](https://developers.openai.com/codex/app-server/),

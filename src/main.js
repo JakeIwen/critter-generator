@@ -21,7 +21,7 @@ document.querySelector('#app').innerHTML = `
   <header class="topbar">
     <a href="#" class="brand" aria-label="Critter Generator home"><span class="brand-mark">${icon('leaf',25)}</span><span>CRITTER<span class="brand-bottom">GENERATOR</span></span></a>
     <nav aria-label="Main navigation"><button class="nav active" data-page="lab">The laboratory</button><button class="nav" data-page="collection">Collection <span id="count">0</span></button></nav>
-    <button id="connection" class="connection" title="Check your local Codex connection"><i></i><span>Connecting to Codex</span>${icon('reset',14)}</button>
+    <button id="connection" class="connection" title="Check the Codex connection"><i></i><span>Connecting to Codex</span>${icon('reset',14)}</button>
   </header>
   <main>
     <section class="intro"><div><p class="eyebrow">THE UNNATURAL HISTORY MUSEUM <span>EST. WHENEVER</span></p><h1>Unnatural selection<span>.</span></h1></div><p class="intro-note">A cabinet of creatures that never were.<br>Dream them up. Bring them into the world.</p></section>
@@ -40,7 +40,7 @@ document.querySelector('#app').innerHTML = `
           <div class="height-control"><label for="height">${icon('cube',16)} Print height</label><div><input id="height" type="number" value="100" min="60" max="180" step="1" required aria-label="Print height in millimeters"/><span>mm</span></div></div>
           <p class="micro">60–180 mm · display base included</p>
           <button id="generate" class="button primary" type="submit">${icon('sparkle')} Create a critter ${icon('arrow')}</button>
-          <p class="generation-note">Made with your Codex login.<br>New discoveries usually take a few minutes.</p>
+          <p class="generation-note">Made with Codex.<br>New discoveries usually take a minute or two.</p>
         </form>
         <div class="presets"><span class="eyebrow">NEED A NUDGE?</span><button data-preset="gentle">Oddly plausible <span>↗</span></button><button data-preset="weird">Nature’s mistake <span>↗</span></button><button data-preset="danger">Absolute menace <span>↗</span></button></div>
       </aside>
@@ -57,7 +57,7 @@ document.querySelector('#app').innerHTML = `
       </section>
       <aside id="field-notes" class="field-notes card" aria-label="Specimen field notes"><div class="loading-visual"><span class="spinner"></span></div></aside>
     </section>
-    <section id="collection" class="hidden"><div class="collection-heading"><div><p class="eyebrow">YOUR FIELD COLLECTION</p><h2>Previously undiscovered.</h2></div><p>Every creature is saved on this Mac.</p></div><div id="collection-grid" class="collection-grid"></div></section>
+    <section id="collection" class="hidden"><div class="collection-heading"><div><p class="eyebrow">YOUR FIELD COLLECTION</p><h2>Previously undiscovered.</h2></div><p>Every creature is saved to this collection.</p></div><div id="collection-grid" class="collection-grid"></div></section>
     <footer><span>${icon('leaf',14)} NO ACTUAL ECOSYSTEMS WERE HARMED.</span><span>Fictional species. Real possibilities.</span></footer>
   </main><div id="toast" class="toast hidden" role="alert"></div>`;
 
@@ -67,7 +67,7 @@ function slider(id, name, value, low, high, hint) {
 async function api(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', 'X-Critter-Request': '1', ...options.headers } });
   const body = await response.json();
-  if (!response.ok) throw new Error(body.error || 'The local server could not complete this request.');
+  if (!response.ok) throw new Error(body.error || 'The server could not complete this request.');
   return body;
 }
 const $ = id => document.getElementById(id);
@@ -153,6 +153,21 @@ async function showView(next) {
     if (token === viewToken) { $('visual').innerHTML = '<div class="loading-visual"><p>The 3D preview is unavailable. You can still download the STL and CAD source.</p></div>'; toast(e.message); }
   }
 }
+const stageTitles = {design:'Discovering a new species',model:'Bringing it into three dimensions',image:'Putting a face to the name',done:'Discovery complete'};
+// A new critter has no specimen until its field notes exist, so show the job
+// itself instead of leaving the previously selected specimen on stage.
+function showPending(job) {
+  const title = stageTitles[job.stage] || 'Working on your specimen';
+  if (!$('pending-visual')) {
+    ++viewToken; viewer?.dispose(); viewer = null; selected = null;
+    $('reset-view').classList.add('hidden');
+    $('specimen-tag').textContent = 'NEW SPECIMEN / IN PROGRESS';
+    $('view-caption').textContent = 'DISCOVERY IN PROGRESS';
+    $('visual').innerHTML = `<div id="pending-visual" class="loading-visual"><span class="spinner"></span><h3 id="pending-title"></h3><p id="pending-message"></p></div>`;
+    $('field-notes').innerHTML = `<div class="notes-heading"><span class="eyebrow">FIELD NOTES</span>${icon('book',19)}</div><div class="loading-visual"><span class="spinner"></span><p>The field notes are being written.</p></div>`;
+  }
+  $('pending-title').textContent = title; $('pending-message').textContent = job.message || '';
+}
 $('portrait-tab').onclick = () => showView('portrait'); $('model-tab').onclick = () => showView('model');
 $('reset-view').onclick = () => viewer?.reset();
 function renderCollection() {
@@ -167,7 +182,11 @@ function busy(value) {
 async function launch(url, body) {
   if (activeJob) return toast('A discovery is already in progress.');
   busy(true);
-  try { const result = await api(url, { method: 'POST', body: JSON.stringify(body) }); activeJob = result.jobId; sessionStorage.setItem('critter-job',activeJob); void pollJob(); }
+  try {
+    const result = await api(url, { method: 'POST', body: JSON.stringify(body) }); activeJob = result.jobId; sessionStorage.setItem('critter-job',activeJob);
+    if (url === '/api/generate') { setPage('lab'); showPending({ stage: 'design', message: 'Connecting to Codex…' }); }
+    void pollJob();
+  }
   catch (e) { toast(e.message); busy(false); }
 }
 $('generator-form').onsubmit = e => {
@@ -184,7 +203,8 @@ async function pollJob() {
     while (activeJob) {
       const job = await api(`/api/jobs/${activeJob}`);
       $('status-box').classList.remove('hidden'); $('status-message').textContent = job.message;
-      $('status-title').textContent = ({design:'Discovering a new species',model:'Bringing it into three dimensions',image:'Putting a face to the name',done:'Discovery complete'})[job.stage] || 'Working on your specimen';
+      $('status-title').textContent = stageTitles[job.stage] || 'Working on your specimen';
+      if (!job.specimenId && ['queued','running'].includes(job.status)) showPending(job);
       if (job.specimenId && selected?.id !== job.specimenId) { tab = 'portrait'; await loadSpecimens(job.specimenId); }
       if (!['queued','running'].includes(job.status)) {
         activeJob = null; sessionStorage.removeItem('critter-job'); $('status-box').classList.add('hidden'); busy(false);
@@ -200,7 +220,7 @@ async function checkConnection(reconnect = false) {
     const status = await api(reconnect ? '/api/connect' : '/api/status', reconnect ? { method:'POST',body:'{}' } : {});
     $('connection').classList.toggle('online',status.connected);
     $('connection').querySelector('span').textContent = status.connected ? 'Codex connected' : 'Codex offline · Retry';
-    $('connection').title = status.reason || `Using ${status.model} through your local Codex login`;
+    $('connection').title = status.reason || `Using ${status.model} through Codex`;
     if (status.activeJob && !activeJob) { activeJob = status.activeJob; void pollJob(); }
   } catch(e) { $('connection').querySelector('span').textContent = 'Codex offline · Retry'; $('connection').classList.remove('online'); if(reconnect) toast(e.message); }
 }
