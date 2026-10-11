@@ -94,12 +94,22 @@ The server still binds only `127.0.0.1`. To serve it through a Cloudflare Tunnel
 
 - `PUBLIC_ORIGIN`: the public URL, e.g. `https://critter.lionfeather.dev`
 - `ACCESS_TEAM_DOMAIN`: e.g. `<team>.cloudflareaccess.com`
-- `ACCESS_AUD`: the Access application's audience tag
+- `ACCESS_AUD`: the audience tag of the Access application that guards `/auth/email`
+- `CRITTER_PASSCODE` (optional): a shared passcode that also signs visitors in
 - `CRITTER_DATA_DIR` (optional): data directory instead of `.local/`
 
-Requests for the public host must carry a valid `Cf-Access-Jwt-Assertion`; the server checks its
-signature against the team's published keys, plus issuer, audience, and expiry. Localhost requests
-work as before. Everyone allowed through Access shares one collection and the host's Codex login.
+Requests for the public host need a session cookie, which `/auth` issues in one of two ways:
+
+- **Passcode:** the form at `/auth` checks `CRITTER_PASSCODE`. Ten wrong tries from one address
+  (or 100 overall) in 15 minutes lock the form for 15 minutes. Changing the passcode signs out
+  everyone who used it.
+- **Email:** `/auth/email` is the only path Cloudflare Access guards, with its emailed one-time
+  code. The server checks the `Cf-Access-Jwt-Assertion` signature against the team's published
+  keys, plus issuer, audience, and expiry, before issuing the session.
+
+Sessions last 7 days and are signed with a key kept in the data directory (`session-secret`).
+Access must bypass the rest of the host; otherwise the passcode can never be reached. Localhost
+requests work as before. Everyone signed in shares one collection and the host's Codex login.
 The lionfeather.dev deployment lives in the `lionfeather-edge` repository (`apps/critter/`).
 
 ## 3D printing
@@ -171,6 +181,7 @@ Live browser verification covered generation, interruption, collection navigatio
 - `server/store.mjs`: SQLite metadata and asset persistence.
 - `server/index.mjs`: loopback-only Express server and generation lifecycle.
 - `server/access.mjs`: Cloudflare Access token verification for optional public hosting.
+- `server/login.mjs`: public-host sign-in (passcode or Access email), session cookies, and lockout.
 - `src/`: frontend and Three.js viewer, bundled locally with Vite.
 
 The app follows the [official Codex app-server protocol](https://developers.openai.com/codex/app-server/),

@@ -8,6 +8,7 @@ import { Codex, imageBytes, safeError } from './codex.mjs';
 import { Store } from './store.mjs';
 import { DESIGN_VERSION } from './geometry.mjs';
 import { createAccessVerifier } from './access.mjs';
+import { createLogin } from './login.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const port = Number(process.env.PORT || 4329);
@@ -20,27 +21,30 @@ app.disable('x-powered-by');
 const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, 'http://127.0.0.1:5173', 'http://localhost:5173']);
 const localHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
 // Optional public hosting behind Cloudflare Access (e.g. https://critter.lionfeather.dev).
-// Requests for that host must carry a valid Access token; localhost stays as before.
+// Requests for that host need a session from server/login.mjs; localhost stays as before.
 const publicOrigin = process.env.PUBLIC_ORIGIN ? new URL(process.env.PUBLIC_ORIGIN) : null;
-const verifyAccess = publicOrigin
-  ? createAccessVerifier({ teamDomain: process.env.ACCESS_TEAM_DOMAIN, audience: process.env.ACCESS_AUD })
-  : null;
+const login = publicOrigin ? createLogin({ publicOrigin, passcode: process.env.CRITTER_PASSCODE,
+  verifyAccess: createAccessVerifier({ teamDomain: process.env.ACCESS_TEAM_DOMAIN, audience: process.env.ACCESS_AUD }),
+  secretFile: path.join(store.root, 'session-secret') }) : null;
 if (publicOrigin) origins.add(publicOrigin.origin);
-app.use(async (req, res, next) => {
-  const isPublic = publicOrigin && req.headers.host === publicOrigin.host;
+const isPublicHost = req => publicOrigin && req.headers.host === publicOrigin.host;
+const isLoginPath = req => req.path === '/auth' || req.path.startsWith('/auth/');
+app.use((req, res, next) => {
+  const isPublic = isPublicHost(req);
   if (!isPublic && !localHosts.includes(req.headers.host)) return res.status(403).json({ error: 'Localhost access only.' });
-  if (isPublic) {
-    try { await verifyAccess(req.headers['cf-access-jwt-assertion']); } catch { return res.status(403).json({ error: 'Your sign-in has expired. Reload the page to sign in again.' }); }
-  }
+  if (isPublic && !isLoginPath(req) && !login.signedIn(req)) return login.challenge(req, res);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
   // Keep proxies such as Cloudflare from injecting scripts (e.g. analytics beacons) into pages.
   res.setHeader('Cache-Control', 'no-transform');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
   if (req.headers.origin && !origins.has(req.headers.origin)) return res.status(403).json({ error: 'Cross-origin access denied.' });
-  if (!['GET', 'HEAD'].includes(req.method) && req.headers['x-critter-request'] !== '1') return res.status(403).json({ error: 'Missing app request header.' });
+  // The sign-in form is a plain HTML post; login.mjs checks its Origin instead.
+  const isLoginForm = isPublic && isLoginPath(req);
+  if (!['GET', 'HEAD'].includes(req.method) && req.headers['x-critter-request'] !== '1' && !isLoginForm) return res.status(403).json({ error: 'Missing app request header.' });
   next();
 });
+if (login) app.use((req, res, next) => isPublicHost(req) ? login.router(req, res, next) : next());
 app.use(express.json({ limit: '16kb' }));
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
