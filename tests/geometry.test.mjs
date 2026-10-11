@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createModel, stlBuffer, recipe } from '../server/geometry.mjs';
+import { createModel, stlBuffer, recipe, PRINT_RULES } from '../server/geometry.mjs';
 import { example, Anatomy } from '../shared/specimen.mjs';
 
 function verifySerializedSolid(buffer, height) {
@@ -40,13 +40,17 @@ test('anatomy boundary combinations produce connected printable solids', async (
     const model = await createModel(anatomy,height);
     assert.equal(model.info.components,1,`Case ${i}`); verifySerializedSolid(stlBuffer(model),height);
     if (anatomy.legPairs) assert(model.info.legShaftDiameterMm >= 5, `Case ${i}: leg shafts stay at least 5 mm at the smallest supported print size`);
+    if (model.info.minFeatureDiameterMm !== null) assert(model.info.minFeatureDiameterMm >= PRINT_RULES.minFeatureMm, `Case ${i}: no protrusion thinner than ${PRINT_RULES.minFeatureMm} mm`);
+    assert(model.info.baseThicknessMm >= PRINT_RULES.baseThicknessMm, `Case ${i}: base slab thick enough`);
+    assert(model.info.stable, `Case ${i}: center of mass sits over the middle of the base`);
+    assert(model.info.overhangPct >= 0 && model.info.overhangPct < 60, `Case ${i}: overhang share is measured`);
   }
 });
 test('legacy tall-leg inputs produce a low stance with stout load-bearing segments', () => {
   const parts = recipe({...example.anatomy,legLength:16,bodyHeight:24,bodyWidth:22});
   const body = parts.find(p => p.type === 'ellipsoid');
   const base = parts.find(p => p.type === 'base');
-  const clearance = body.p[2] - body.r[2] - base.height;
+  const clearance = body.p[2] - body.r[2] - base.top;
   assert(clearance <= body.r[2] * .25,'Belly clearance is bounded relative to body size');
   const legs = parts.filter(p => p.tag === 'leg');
   assert(legs.length > 0);
@@ -54,6 +58,27 @@ test('legacy tall-leg inputs produce a low stance with stout load-bearing segmen
     const length = Math.hypot(...leg.p.map((v,i) => v-leg.q[i]));
     assert(length / (2 * Math.min(leg.r,leg.s)) < 2,'Each load-bearing segment is short compared with its thickness');
   }
+});
+test('the base has a bottom chamfer against first-layer squish', async () => {
+  const { positions } = await createModel(example.anatomy, 60);
+  let bed = 0, above = 0;
+  for (let i = 0; i < positions.length; i += 3) {
+    const reach = Math.hypot(positions[i], positions[i + 1]), z = positions[i + 2];
+    if (z < 1e-4) bed = Math.max(bed, reach);
+    else if (z > PRINT_RULES.baseChamferMm + .05 && z < 2) above = Math.max(above, reach);
+  }
+  assert(above - bed > PRINT_RULES.baseChamferMm * .9, 'Bed footprint is inset by the chamfer');
+});
+test('long tails rest on the base instead of cantilevering', async () => {
+  const parts = recipe({...example.anatomy, tailLength:28, tailCurl:1});
+  const base = parts.find(p => p.type === 'base');
+  const tail = parts.filter(p => p.tag === 'tail' && p.type === 'link').at(-1);
+  assert(tail.q[2] - tail.s < base.top, 'Tail tip sinks into the base');
+  assert(base.discs.some(([x, y, r]) => Math.hypot(tail.q[0] - x, tail.q[1] - y) < r), 'Tail tip lies over the base');
+  const short = recipe({...example.anatomy, tailLength:6}).filter(p => p.tag === 'tail' && p.type === 'link').at(-1);
+  assert(short.q[2] > base.top + 5, 'Short stubby tails stay up');
+  const model = await createModel({...example.anatomy, tailLength:28, tailCurl:1}, 100);
+  assert.match(model.scad, /hull\(\)/); assert.equal(model.info.tailRestsOnBase, true);
 });
 test('invalid geometry cannot create unbounded or non-finite meshes', async () => {
   assert.equal(Anatomy.safeParse({...example.anatomy,bodyLength:Infinity}).success,false);

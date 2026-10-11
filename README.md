@@ -1,7 +1,7 @@
 # Critter Generator
 
 A locally hosted fictional-creature studio: generated portraits, English and invented Latin names,
-field notes, three personality sliders, and a rotatable 3D-printable sculpture.
+field notes, five personality sliders, and a rotatable 3D-printable sculpture.
 
 ## Run
 
@@ -37,8 +37,12 @@ available and otherwise the account's returned default. No global Codex configur
 ## Use
 
 1. Optionally describe a creature or choose a preset.
-2. Adjust **Absurdity**, **Sexual deviancy**, and **Lethality** from 0–100.
+2. Adjust **Absurdity**, **Sexual deviancy**, **Femme**, **Psychedelic**, and **Lethality** from 0–100.
    Sexual deviancy means unusual, non-graphic courtship and speculative reproductive biology.
+   Femme is grace and ornament (frills, lashes, jewel tones, poise), never sexualized. Psychedelic is
+   fluorescent color, hypnotic patterning and dreamlike behavior; at 60+ the portrait drops the muted
+   natural-history palette. The sliders are defined once in `shared/sliders.mjs`. Older saved specimens
+   show only the sliders they were made with.
 3. Set the print height (60–180 mm) and click **Create a critter**.
 4. Codex writes structured field notes and anatomy. The local geometry engine makes a closed solid,
    and Codex's native image-generation tool paints the portrait. Expect a few minutes.
@@ -109,15 +113,27 @@ requested height, and exports a flat display base with the creature. The browser
 STL geometry. STL has no intrinsic unit metadata; import using **millimeters**.
 The sculpture has one material; STL does not include portrait colors or textures.
 
+New models follow FDM conventions for a sturdy figurine (`PRINT_RULES` in `server/geometry.mjs`),
+enforced in printed millimeters so they hold at every height:
+
+- No horn, antenna or tail segment thinner than 3 mm. The print scale is solved first, then thin
+  features are thickened to suit it.
+- A base slab at least 3 mm thick, with a 0.8 mm bottom chamfer against first-layer squish.
+- Tails of 10+ relative units sweep down and rest on the base on a small pad, rather than cantilevering.
+  The base becomes the hull of its disc and the pad, so the footprint stays compact.
+- The model info reports the thinnest feature, base thickness, the share of surface that overhangs
+  more than 45° (support needed), and whether the center of mass sits over the middle of the base.
+
 New generations favor squat, sturdy animals. The generation schema caps belly clearance at six
 relative units, and the CAD builder additionally caps it at one quarter of the torso's vertical
 semi-axis. Leg shafts grow with body width and use broad joints and feet. The boundary-case tests
 check a nominal leg shaft diameter of at least 5 mm, including 60 mm-tall sculptures. These are
 geometric design constraints, not a material-strength guarantee. Older saved models and portraits
-remain as generated; the sturdier recipe applies when creating new model files.
+remain as generated; the sturdier recipe applies when creating new model files. The bundled
+example's model is regenerated at startup whenever the design version changes.
 
-Open the STL in your preferred slicer. Start with the flat base on the bed and supports enabled for
-overhangs. Check the belly, muzzle, tail, and antennae in layer preview. Geometry has been validated;
+Open the STL in your preferred slicer. Print upright with the chamfered base on the bed and tree or
+organic supports for the belly, chin and eyes. Check those areas in layer preview. Geometry has been validated;
 no physical print or printer-specific slicing has been performed. Material, nozzle size, support
 settings, and print orientation still determine physical results. This app does not emit G-code.
 
@@ -149,6 +165,7 @@ Live browser verification covered generation, interruption, collection navigatio
 - `server/codex.mjs`: the CLI's stdio app-server protocol, model discovery, constrained JSON,
   native image generation, cancellation, and timeout handling. Only app-created ephemeral threads
   are used. Shell, MCP connectors, browsing, and filesystem modification tools are disabled.
+- `shared/sliders.mjs`: the personality sliders (ids, labels, defaults), shared by server and browser.
 - `shared/specimen.mjs`: input/anatomy validation, output schema, and generation prompts.
 - `server/geometry.mjs`: shared solid/SCAD recipe and binary STL writer; built in a worker thread.
 - `server/store.mjs`: SQLite metadata and asset persistence.

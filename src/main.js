@@ -1,5 +1,6 @@
 import './style.css';
 import { mountViewer } from './viewer.js';
+import { sliders } from '../shared/sliders.mjs';
 
 const icon = (name, size = 18) => {
   const paths = {
@@ -33,9 +34,7 @@ document.querySelector('#app').innerHTML = `
           <label class="input-label" for="prompt">Start with a notion <span>OPTIONAL</span></label>
           <textarea id="prompt" maxlength="1000" rows="3" placeholder="A shy swamp dweller that collects lost buttons…"></textarea>
           <div class="sliders">
-            ${slider('absurdity','Absurdity',65,'Almost plausible','Nature gave up','The extent to which this creature defies sensible evolution.')}
-            ${slider('deviancy','Sexual deviancy',35,'Conventional','Deeply peculiar','Bizarre courtship & reproductive biology. Non-graphic.')}
-            ${slider('lethality','Lethality',20,'Pocket companion','Apex nightmare','How dangerous this fictional animal is.')}
+            ${sliders.map(slider).join('')}
           </div>
           <div class="height-control"><label for="height">${icon('cube',16)} Print height</label><div><input id="height" type="number" value="100" min="60" max="180" step="1" required aria-label="Print height in millimeters"/><span>mm</span></div></div>
           <p class="micro">60–180 mm · display base included</p>
@@ -53,7 +52,7 @@ document.querySelector('#app').innerHTML = `
         </div>
         <div class="download-card card"><div><span class="eyebrow">FROM IMAGINATION TO YOUR DESK</span><h3>Make it tangible.</h3></div><div class="download-actions"><a id="stl-download" class="button primary" aria-label="Download printable STL">${icon('download')} STL</a><a id="cad-download" class="button secondary" aria-label="Download editable OpenSCAD CAD source">${icon('cube')} CAD source</a></div></div>
         <div id="print-info" class="print-info"></div>
-        <p class="print-caption">The 3D print is a simplified sculpture of the same anatomy. Artwork can vary in detail. Supports may be needed; check the model in your slicer.</p>
+        <p class="print-caption">The 3D print is a simplified sculpture of the same anatomy. Artwork can vary in detail. Print upright on the chamfered base with supports for the belly and chin; check the model in your slicer.</p>
       </section>
       <aside id="field-notes" class="field-notes card" aria-label="Specimen field notes"><div class="loading-visual"><span class="spinner"></span></div></aside>
     </section>
@@ -61,7 +60,7 @@ document.querySelector('#app').innerHTML = `
     <footer><span>${icon('leaf',14)} NO ACTUAL ECOSYSTEMS WERE HARMED.</span><span>Fictional species. Real possibilities.</span></footer>
   </main><div id="toast" class="toast hidden" role="alert"></div>`;
 
-function slider(id, name, value, low, high, hint) {
+function slider({ id, name, initial: value, low, high, hint }) {
   return `<div class="slider-control ${id}"><div class="slider-label"><label for="${id}">${name}</label><output id="${id}-value" for="${id}">${value}<small>/100</small></output></div><input id="${id}" type="range" min="0" max="100" value="${value}" aria-describedby="${id}-hint" style="--value:${value}%"/><div class="range-labels"><span>${low}</span><span>${high}</span></div><p id="${id}-hint" class="slider-hint">${hint}</p></div>`;
 }
 async function api(url, options = {}) {
@@ -80,17 +79,23 @@ function setPage(next) {
 }
 document.querySelectorAll('[data-page]').forEach(b => b.onclick = () => setPage(b.dataset.page));
 document.querySelector('.brand').onclick = e => { e.preventDefault(); setPage('lab'); };
-for (const id of ['absurdity','deviancy','lethality']) $(id).oninput = () => {
+for (const { id } of sliders) $(id).oninput = () => {
   $(id + '-value').innerHTML = `${$(id).value}<small>/100</small>`; $(id).style.setProperty('--value', `${$(id).value}%`);
 };
+// Saved recipes from before a slider existed fall back to its initial value.
+function applySliders(values) {
+  for (const { id, initial } of sliders) { $(id).value = values[id] ?? initial; $(id).oninput(); }
+}
+// Specimens from before a slider existed show only the values they were made with.
+const usedSliders = settings => sliders.filter(({ id }) => settings[id] !== undefined);
 const presets = {
-  gentle: { absurdity: 15, deviancy: 10, lethality: 5, prompt: 'A gentle forest grazer with one surprising adaptation.' },
-  weird: { absurdity: 95, deviancy: 80, lethality: 25, prompt: 'A delightfully ridiculous creature with inexplicably elaborate courtship rituals.' },
-  danger: { absurdity: 60, deviancy: 35, lethality: 95, prompt: 'A small but intimidating cave predator with imposing horns and dorsal armor.' },
+  gentle: { absurdity: 15, deviancy: 10, femme: 30, psychedelic: 10, lethality: 5, prompt: 'A gentle forest grazer with one surprising adaptation.' },
+  weird: { absurdity: 95, deviancy: 80, femme: 70, psychedelic: 90, lethality: 25, prompt: 'A delightfully ridiculous creature with inexplicably elaborate courtship rituals.' },
+  danger: { absurdity: 60, deviancy: 35, femme: 15, psychedelic: 20, lethality: 95, prompt: 'A small but intimidating cave predator with imposing horns and dorsal armor.' },
 };
 document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
   const preset = presets[b.dataset.preset]; $('prompt').value = preset.prompt;
-  for (const id of ['absurdity','deviancy','lethality']) { $(id).value = preset[id]; $(id).oninput(); }
+  applySliders(preset);
   document.querySelectorAll('[data-preset]').forEach(p => p.classList.toggle('chosen', p === b));
 });
 async function loadSpecimens(selectId) {
@@ -104,10 +109,10 @@ async function selectSpecimen(specimen) {
   $('specimen-tag').textContent = specimen.demo ? 'EXAMPLE / SCULPTURE' : `SPECIMEN / ${String(specimens.filter(s => !s.demo).length - specimens.findIndex(s => s.id === specimen.id)).padStart(3,'0')}`;
   $('stl-download').href = file(specimen, 'model.stl', true); $('cad-download').href = file(specimen, 'model.scad', true);
   const { print } = specimen;
-  $('print-info').innerHTML = `<span>${icon('check',14)} Closed, single solid</span><span>${print.dimensions.map(escape).join(' × ')} mm</span><span>${print.triangles.toLocaleString()} triangles</span>`;
+  $('print-info').innerHTML = `<span>${icon('check',14)} Closed, single solid</span><span>${print.dimensions.map(escape).join(' × ')} mm</span><span>${print.triangles.toLocaleString()} triangles</span>${print.minFeatureDiameterMm ? `<span>Thinnest feature ${escape(print.minFeatureDiameterMm)} mm</span>` : ''}${print.overhangPct !== undefined ? `<span>${escape(Math.round(print.overhangPct))}% overhang</span>` : ''}`;
   $('field-notes').innerHTML = `<div class="notes-heading"><span class="eyebrow">${specimen.demo ? 'EXAMPLE FIELD NOTES' : 'FIELD NOTES'}</span>${icon('book',19)}</div>
     <h2>${escape(specimen.englishName)}</h2><p class="latin">${escape(specimen.latinName)}</p><p class="epithet">${escape(specimen.epithet)}</p>
-    <div class="trait-chips"><span>A ${specimen.settings.absurdity}</span><span>D ${specimen.settings.deviancy}</span><span>L ${specimen.settings.lethality}</span><span>FICTIONAL SPECIES</span></div>
+    <div class="trait-chips">${usedSliders(specimen.settings).map(({ id, short }) => `<span class="chip-${id}">${short} ${specimen.settings[id]}</span>`).join('')}<span>FICTIONAL SPECIES</span></div>
     <p class="description">${escape(specimen.description)}</p>
     ${note('Habitat',specimen.habitat)}${note('Diet',specimen.diet)}${note('Courtship & biology',specimen.courtship)}${note('Threat assessment',specimen.danger)}
     <blockquote><span>FROM THE FIELD JOURNAL</span>“${escape(specimen.fieldNote)}”</blockquote>
@@ -117,7 +122,7 @@ async function selectSpecimen(specimen) {
   if ($('retry-portrait')) $('retry-portrait').disabled = !!activeJob;
   $('reuse-settings').onclick = () => {
     $('prompt').value = specimen.settings.prompt; $('height').value = specimen.settings.height;
-    for (const id of ['absurdity','deviancy','lethality']) { $(id).value = specimen.settings[id]; $(id).oninput(); }
+    applySliders(specimen.settings);
     $('generator-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
   await showView(specimen.image ? tab : 'model');
@@ -171,7 +176,7 @@ function showPending(job) {
 $('portrait-tab').onclick = () => showView('portrait'); $('model-tab').onclick = () => showView('model');
 $('reset-view').onclick = () => viewer?.reset();
 function renderCollection() {
-  $('collection-grid').innerHTML = specimens.map(s => `<button class="collection-item card" data-specimen="${s.id}"><div class="collection-image">${s.image ? `<img src="${file(s,'portrait.png')}" alt="${escape(s.englishName)}" loading="lazy"/>` : `<div class="collection-placeholder">${icon('cube',48)}<span>${s.demo ? 'EXAMPLE SCULPTURE' : 'SCULPTURE READY'}</span></div>`}<span>${s.demo ? 'EXAMPLE' : new Date(s.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></div><div class="collection-details"><p class="latin">${escape(s.latinName)}</p><h3>${escape(s.englishName)}</h3><p>A ${s.settings.absurdity} <i>·</i> D ${s.settings.deviancy} <i>·</i> L ${s.settings.lethality} <span>${icon('arrow')}</span></p></div></button>`).join('');
+  $('collection-grid').innerHTML = specimens.map(s => `<button class="collection-item card" data-specimen="${s.id}"><div class="collection-image">${s.image ? `<img src="${file(s,'portrait.png')}" alt="${escape(s.englishName)}" loading="lazy"/>` : `<div class="collection-placeholder">${icon('cube',48)}<span>${s.demo ? 'EXAMPLE SCULPTURE' : 'SCULPTURE READY'}</span></div>`}<span>${s.demo ? 'EXAMPLE' : new Date(s.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span></div><div class="collection-details"><p class="latin">${escape(s.latinName)}</p><h3>${escape(s.englishName)}</h3><p>${usedSliders(s.settings).map(({ id, short }) => `${short} ${s.settings[id]}`).join(' <i>·</i> ')} <span>${icon('arrow')}</span></p></div></button>`).join('');
   document.querySelectorAll('[data-specimen]').forEach(b => b.onclick = () => { setPage('lab'); tab = 'portrait'; void selectSpecimen(specimens.find(s => s.id === b.dataset.specimen)); });
 }
 function busy(value) {
@@ -192,7 +197,7 @@ async function launch(url, body) {
 $('generator-form').onsubmit = e => {
   e.preventDefault();
   const settings = { prompt: $('prompt').value.trim() };
-  for (const id of ['absurdity','deviancy','lethality','height']) settings[id] = Number($(id).value);
+  for (const id of [...sliders.map(s => s.id), 'height']) settings[id] = Number($(id).value);
   void launch('/api/generate', settings);
 };
 $('cancel').onclick = async () => { try { await api(`/api/jobs/${activeJob}/cancel`, { method: 'POST', body: '{}' }); } catch(e) { toast(e.message); } };

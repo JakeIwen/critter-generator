@@ -1,11 +1,14 @@
 import { z } from 'zod';
+import { sliders } from './sliders.mjs';
 
 const count = (max) => z.number().int().min(0).max(max);
+const level = z.number().int().min(0).max(100);
+// Sliders added after the first release default to 0 so older clients and
+// saved recipes still validate.
+const original = new Set(['absurdity', 'deviancy', 'lethality']);
 export const Settings = z.object({
   prompt: z.string().trim().max(1000).default(''),
-  absurdity: z.number().int().min(0).max(100),
-  deviancy: z.number().int().min(0).max(100),
-  lethality: z.number().int().min(0).max(100),
+  ...Object.fromEntries(sliders.map(({ id }) => [id, original.has(id) ? level : level.default(0)])),
   height: z.number().int().min(60).max(180),
 }).strict();
 export const Anatomy = z.object({
@@ -60,8 +63,15 @@ Absurdity: 0 = plausible unfamiliar wildlife, 100 = wonderfully ludicrous biolog
 Sexual deviancy: 0 = ordinary courtship, 100 = bizarre non-graphic speculative reproductive biology
 (e.g. competitive nest architecture, swapping bioluminescent signals, seasonal sex changes).
 Keep this zoological, never erotic: no explicit sex acts, sexualized anatomy, humans or humanoids.
+Femme: 0 = rugged, blunt and utilitarian, 100 = exquisitely femme: graceful poise, ornate frills and crests,
+long lashes, delicate patterning, jewel or pastel tones, a flair for elegance and self-presentation.
+Express femme through style, ornament, color and behavior; it is never sexualized.
+Psychedelic: 0 = sober field-guide coloring and ordinary behavior, 100 = fully psychedelic: fluorescent,
+iridescent or clashing colors, hypnotic spirals and fractal patterning, kaleidoscopic eye arrangements,
+and dreamlike, mind-bending habits. Never mention or depict drug use.
 Lethality: 0 = harmless, 100 = a terrifying fictional predator; no gore or real-world weapon instructions.
-All three settings must materially influence the prose; absurdity and lethality should also influence anatomy.
+All five settings must materially influence the prose. Absurdity and lethality should also influence anatomy;
+femme and psychedelic should show in color, accent, texture, eyes, plates and horn shape.
 Design for a sturdy small 3D-printed figurine: a low center of gravity, compact stance,
 short thick limbs, broad feet, and generous leg-to-body connections. No stilt legs, spindly shins,
 raised-on-tip-toe poses, towering bodies, or long unsupported necks. Keep any antennae stubby.
@@ -78,7 +88,19 @@ Use varied compact proportions. High absurdity can have many eyes, short antenna
 The epithet is a short subtitle. fieldNote is a short, amusing observation. No tools are needed.`;
 }
 
+// Older specimens predate these sliders and keep the original muted palette.
+function paletteDirection({ femme = 0, psychedelic = 0 } = {}) {
+  const lines = [];
+  if (psychedelic >= 60) lines.push('Psychedelic styling: vivid fluorescent and iridescent color, hypnotic swirling skin patterns, a dreamlike glowing atmosphere.');
+  else if (psychedelic >= 30) lines.push('Touches of surreal, saturated color and patterning in the skin.');
+  if (femme >= 60) lines.push('Femme styling: graceful poised posture, ornate frills, elegant lashes and delicate jewel-toned ornament; never sexualized.');
+  else if (femme >= 30) lines.push('A hint of elegance and ornament in the pose and markings.');
+  const palette = psychedelic >= 60 ? 'a bold saturated palette' : 'a restrained natural-history color palette';
+  return { lines: lines.join('\n'), palette };
+}
+
 export function illustrationPrompt(specimen) {
+  const style = paletteDirection(specimen.settings);
   return `Generate one detailed image of this invented animal using the image generation tool.
 Use the tool now; do not return a textual prompt or code. No other tools are needed.
 Subject: ${specimen.englishName} (${specimen.latinName}). ${specimen.description}
@@ -91,7 +113,8 @@ units versus a full torso height of ${specimen.anatomy.bodyHeight * 2} units. Av
 spindly or towering silhouettes, even if an older saved description uses those words.
 An evocative museum specimen portrait, full body in three-quarter view, visible feet and tail,
 finely detailed organic skin, cinematic soft side lighting, dark olive charcoal studio background,
-subtle earthy ground and atmospheric falloff, restrained natural-history color palette.
+subtle earthy ground and atmospheric falloff, ${style.palette}.
+${style.lines}
 Center the entire animal with generous empty margins. Square composition. No text, labels, watermark,
 human, sexualized anatomy, explicit mating, or gore. The result is a creature portrait, not a diagram.
 After generating the image, reply with one brief completion sentence.`;

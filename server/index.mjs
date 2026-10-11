@@ -6,6 +6,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { Settings, GenerationSpecimen, specimenSchema, creaturePrompt, illustrationPrompt, example } from '../shared/specimen.mjs';
 import { Codex, imageBytes, safeError } from './codex.mjs';
 import { Store } from './store.mjs';
+import { DESIGN_VERSION } from './geometry.mjs';
 import { createAccessVerifier } from './access.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -51,6 +52,11 @@ if (!store.get('specimens', 'example-lantern')) {
   const print = await store.model('example-lantern', example.anatomy, 100);
   store.save('specimens', 'example-lantern', { ...example, id: 'example-lantern', demo: true, image: false, print,
     settings: { prompt: '', absurdity: 65, deviancy: 35, lethality: 20, height: 100 }, createdAt: '2026-01-01T00:00:00.000Z' });
+}
+// Generated specimens keep the model they were made with; the example follows the current print recipe.
+if (store.get('specimens', 'example-lantern').print.designVersion !== DESIGN_VERSION) {
+  const print = await store.model('example-lantern', example.anatomy, 100);
+  store.save('specimens', 'example-lantern', { ...store.get('specimens', 'example-lantern'), print });
 }
 // The example ships with a Codex-generated portrait so new installs aren't blank.
 const examplePortrait = path.join(root, 'server/assets/example-lantern-portrait.png');
