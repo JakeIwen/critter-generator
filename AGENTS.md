@@ -25,7 +25,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 
 ## Working agreements
 
-- Run `npm run check` before committing. It runs every unit test, builds into a temporary directory, starts a server with a temporary data root and port, then runs HTTP and binary-download verification. It must not use `.local`, Codex credentials, or live generation.
+- Run `npm run check` before committing. It runs every unit test, builds into a temporary directory, starts a server with a temporary data root and port, then runs HTTP and binary-download verification. It substitutes an offline Codex executable and checks that it was used; it must not use `.local`, Codex credentials, or live generation.
 - `.local/critters.sqlite` and `.local/specimens/` are authoritative user data. Never use them in tests or replace them during deployment.
 - Preserve `server/index.mjs`, port 4329, loopback binding, and asset/API routes as deployment contracts.
 - Live generation is nondeterministic and is not a refactor oracle. Compare fixed specimen HTTP bodies, STL/SCAD bytes, DOM, and computed styles instead.

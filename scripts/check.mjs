@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -36,6 +36,20 @@ async function waitForServer(origin) {
   }
   throw new Error(`isolated server did not become ready at ${origin}`);
 }
+async function offlineCodexEnvironment() {
+  const bin = path.join(scratch, 'bin');
+  const marker = path.join(scratch, 'offline-codex-used');
+  await mkdir(bin);
+  await writeFile(path.join(bin, 'codex'), '#!/bin/sh\nprintf fixture > "$CRITTER_CHECK_MARKER"\nexit 1\n', { mode: 0o700 });
+  return { PATH: bin, CRITTER_CHECK_MARKER: marker };
+}
+async function verifyOfflineCodex(marker) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try { if (await readFile(marker, 'utf8') === 'fixture') return; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  throw new Error('isolated server did not use the offline Codex fixture');
+}
 async function stopServer(child) {
   if (!child || (child.exitCode !== null || child.signalCode !== null)) return;
   child.kill('SIGTERM');
@@ -58,7 +72,7 @@ try {
   await run(process.execPath, ['--test', ...tests]);
   await run(path.join(root, 'node_modules/.bin/vite'), ['build', '--outDir', path.join(scratch, 'dist'), '--emptyOutDir']);
   const port = await availablePort();
-  const env = { ...process.env, PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data'), CRITTER_DIST_DIR: path.join(scratch, 'dist') };
+  const env = { ...process.env, ...await offlineCodexEnvironment(), PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data'), CRITTER_DIST_DIR: path.join(scratch, 'dist') };
   server = spawn(process.execPath, ['server/index.mjs'], { cwd: root, env, stdio: 'inherit' });
   const startupError = new Promise((_, reject) => {
     server.once('error', reject);
@@ -69,6 +83,7 @@ try {
   const builtIndex = await readFile(path.join(scratch, 'dist/index.html'), 'utf8');
   if (servedIndex !== builtIndex) throw new Error('isolated server did not serve the scratch build');
   await run(process.execPath, ['scripts/verify-http.mjs'], { env });
+  await verifyOfflineCodex(env.CRITTER_CHECK_MARKER);
 } finally {
   await stopServer(server);
   await rm(scratch, { recursive: true, force: true });
