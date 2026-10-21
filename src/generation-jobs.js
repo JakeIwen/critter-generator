@@ -2,7 +2,7 @@ import { api } from './api.js';
 const runningStatuses = ['queued', 'running'];
 const stageTitles = {design:'Discovering a new species',model:'Bringing it into three dimensions',image:'Putting a face to the name',done:'Discovery complete'};
 
-export function createJobController(byId, { onBusy, onPending, onSpecimen, onComplete, onError }) {
+export function createJobController(byId, { onBusy, onLaunchPending, onPending, onSpecimen, onComplete, onError }) {
   let activeJob = null;
   let polling = false;
   async function poll() {
@@ -33,7 +33,7 @@ export function createJobController(byId, { onBusy, onPending, onSpecimen, onCom
     try {
       const result = await api(url, { method: 'POST', body: JSON.stringify(body) });
       activeJob = result.jobId; sessionStorage.setItem('critter-job', activeJob);
-      if (url === '/api/generate') onPending({ stage: 'design', message: 'Connecting to Codex…' }, stageTitles.design);
+      if (url === '/api/generate') onLaunchPending({ stage: 'design', message: 'Connecting to Codex…' }, stageTitles.design);
       void poll();
     } catch (error) { onError(error.message); onBusy(false); }
   }

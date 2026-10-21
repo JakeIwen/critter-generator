@@ -80,6 +80,7 @@ export function createSpecimenView(byId, { onPortrait, onReuse, onError }) {
   return {
     get selectedId() { return selected?.id; },
     select,
+    resetToPortrait() { tab = 'portrait'; },
     selectPortrait(specimen, specimens) { tab = 'portrait'; return select(specimen, specimens); },
     setBusy(value) { activeJob = value; if (byId('retry-portrait')) byId('retry-portrait').disabled = value; },
     showPending(job, title) {

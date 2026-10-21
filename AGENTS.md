@@ -9,7 +9,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `src/template.js`, `src/icons.js`, and `src/presets.js`: application markup, SVG icons, and generator presets.
 - `src/generation-form.js` and `src/generation-jobs.js`: generator inputs and job lifecycle.
 - `src/specimen-view.js`, `src/collection.js`, and `src/specimen-format.js`: specimen stage, collection rendering, and shared specimen display formatting.
-- `src/api.js`: shared browser API boundary.
+- `src/api.js` and `src/connection.js`: shared browser API and Codex connection status boundaries.
 - `src/viewer.js`: Three.js specimen viewer.
 - `src/style.css`: the single frontend stylesheet and design-token owner.
 - `shared/sliders.mjs`: canonical slider definitions shared by browser and server.
