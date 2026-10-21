@@ -2,6 +2,15 @@
 
 Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. Node 22.13 or newer is required. The public deployment is owned by `../lionfeather-edge/apps/critter/`; this checkout has no persistent Mac service.
 
+## Contracts
+
+| Path | Caller | Owner |
+|---|---|---|
+| `server/index.mjs` | `npm start`, `npm run serve`, lionfeather-edge critter service | `server/index.mjs` |
+| `scripts/check.mjs` | `npm run check`, pre-commit verification | `scripts/check.mjs` |
+| `scripts/verify-http.mjs` | `npm run verify:http`, isolated check server | `scripts/verify-http.mjs` |
+| `scripts/stop.mjs` | `npm run stop`, foreground operator workflow | `scripts/stop.mjs` |
+
 ## Where things live
 
 - `src/main.js`: browser bootstrap only.
@@ -22,6 +31,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `scripts/check.mjs`: complete isolated suite (`npm run check`).
 - `scripts/verify-http.mjs`: HTTP and binary-output checks against a running isolated server.
 - `scripts/compare-browser.js`: browser_clean refactor oracle for desktop/phone DOM and computed styles.
+- `tests/backend-layout.test.mjs`: focused gate for adapter direction, stable command targets and isolated-check boundaries. The generic backend-layout audit remains advisory because no layout baseline is written.
 
 ## Working agreements
 

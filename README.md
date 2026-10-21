@@ -194,6 +194,11 @@ Live browser verification covered generation, interruption, collection navigatio
 - `server/access.mjs`: Cloudflare Access token verification for optional public hosting.
 - `server/login.mjs`: public-host sign-in (passcode or Access email), session cookies, and lockout.
 - `src/`: frontend and Three.js viewer, bundled locally with Vite.
+
+`server/index.mjs` is the stable deployed process entry. It composes the Codex,
+SQLite, geometry and authentication adapters in `server/`; schemas and prompt
+rules shared with the browser remain in `shared/`. The external check, HTTP
+verification and stop commands are listed in the Contracts table in `AGENTS.md`.
 - `src/main.js`: frontend bootstrap; `src/studio.js` owns the laboratory, collection, specimen,
   and generation-job interactions; `src/viewer.js` owns the Three.js preview.
 
