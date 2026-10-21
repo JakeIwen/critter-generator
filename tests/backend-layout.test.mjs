@@ -44,13 +44,21 @@ function imports(source) {
   return JSON.parse(child.stdout);
 }
 
+function sharedImportProblems(file, source) {
+  return imports(source)
+    .filter(specifier => specifier.startsWith("../server/"))
+    .map(specifier => `${file} imports backend adapter ${specifier}`);
+}
+
 test("server entry composes adapters while shared models stay server-independent", () => {
   const entryImports = imports(read("server/index.mjs"));
   for (const owner of ["./codex.mjs", "./store.mjs", "./geometry.mjs", "./access.mjs", "./login.mjs"]) assert.ok(entryImports.includes(owner), owner);
   for (const model of ["shared/specimen.mjs", "shared/sliders.mjs"]) {
-    assert.ok(imports(read(model)).every(specifier => !specifier.startsWith("../server/")), model);
+    assert.deepEqual(sharedImportProblems(model, read(model)), []);
   }
-  assert.ok(imports('import "../server/runtime.mjs";').some(specifier => specifier.startsWith("../server/")));
+  assert.deepEqual(sharedImportProblems("fixture.mjs", 'import "../server/runtime.mjs";'), [
+    "fixture.mjs imports backend adapter ../server/runtime.mjs",
+  ]);
 });
 
 test("every package executable has a complete existing Contracts row", () => {
@@ -58,7 +66,16 @@ test("every package executable has a complete existing Contracts row", () => {
 });
 
 test("contract validation rejects undeclared and missing targets", () => {
-  const markdown = "## Contracts\n\n| Path | Caller | Owner |\n|---|---|---|\n| `server/index.mjs` | fixture | `server/index.mjs` |\n";
-  const problems = contractProblems(markdown, { serve: "node server/index.mjs", stop: "node scripts/missing.mjs" }, file => !String(file).endsWith("missing.mjs"));
-  assert.ok(problems.includes("undeclared target: scripts/missing.mjs"));
+  const markdown = "## Contracts\n\n| Path | Caller | Owner |\n|---|---|---|\n| `server/index.mjs` | fixture | `server/index.mjs` |\n| `scripts/missing.mjs` | fixture | `scripts/missing.mjs` |\n";
+  const problems = contractProblems(
+    markdown,
+    {
+      serve: "node server/index.mjs",
+      missing: "node scripts/missing.mjs",
+      undeclared: "node scripts/undeclared.mjs",
+    },
+    file => !String(file).endsWith("missing.mjs"),
+  );
+  assert.ok(problems.includes("undeclared target: scripts/undeclared.mjs"));
+  assert.ok(problems.includes("missing target: scripts/missing.mjs"));
 });
