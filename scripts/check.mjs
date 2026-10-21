@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,11 +7,19 @@ import { spawn } from 'node:child_process';
 const root = path.resolve(import.meta.dirname, '..');
 const scratch = await mkdtemp(path.join(tmpdir(), 'critter-check-'));
 let server;
+const commandTimeoutMs = 120_000;
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: root, stdio: 'inherit', ...options });
-    child.once('error', reject);
-    child.once('exit', code => code === 0 ? resolve() : reject(new Error(`${command} ${args.join(' ')} exited ${code}`)));
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(`${command} ${args.join(' ')} exceeded ${commandTimeoutMs}ms`));
+    }, commandTimeoutMs);
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('exit', code => {
+      clearTimeout(timer);
+      code === 0 ? resolve() : reject(new Error(`${command} ${args.join(' ')} exited ${code}`));
+    });
   });
 }
 async function availablePort() {
@@ -28,6 +36,19 @@ async function waitForServer(origin) {
   }
   throw new Error(`isolated server did not become ready at ${origin}`);
 }
+async function stopServer(child) {
+  if (!child || child.exitCode !== null) return;
+  child.kill('SIGTERM');
+  const waitForExit = timeoutMs => new Promise(resolve => {
+    if (child.exitCode !== null) return resolve(true);
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    child.once('exit', () => { clearTimeout(timer); resolve(true); });
+  });
+  if (!await waitForExit(5_000)) {
+    child.kill('SIGKILL');
+    if (!await waitForExit(5_000)) throw new Error('isolated server did not exit after SIGKILL');
+  }
+}
 try {
   const tests = (await readdir(path.join(root, 'tests')))
     .filter(name => name.endsWith('.test.mjs'))
@@ -37,14 +58,18 @@ try {
   await run(process.execPath, ['--test', ...tests]);
   await run(path.join(root, 'node_modules/.bin/vite'), ['build', '--outDir', path.join(scratch, 'dist'), '--emptyOutDir']);
   const port = await availablePort();
-  const env = { ...process.env, PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data') };
+  const env = { ...process.env, PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data'), CRITTER_DIST_DIR: path.join(scratch, 'dist') };
   server = spawn(process.execPath, ['server/index.mjs'], { cwd: root, env, stdio: 'inherit' });
-  await waitForServer(`http://127.0.0.1:${port}`);
+  const startupError = new Promise((_, reject) => {
+    server.once('error', reject);
+    server.once('exit', code => reject(new Error(`isolated server exited during startup with ${code}`)));
+  });
+  await Promise.race([waitForServer(`http://127.0.0.1:${port}`), startupError]);
+  const servedIndex = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  const builtIndex = await readFile(path.join(scratch, 'dist/index.html'), 'utf8');
+  if (servedIndex !== builtIndex) throw new Error('isolated server did not serve the scratch build');
   await run(process.execPath, ['scripts/verify-http.mjs'], { env });
 } finally {
-  if (server && server.exitCode === null) {
-    server.kill('SIGTERM');
-    await new Promise(resolve => server.once('exit', resolve));
-  }
+  await stopServer(server);
   await rm(scratch, { recursive: true, force: true });
 }

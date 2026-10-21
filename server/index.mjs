@@ -11,6 +11,7 @@ import { createAccessVerifier } from './access.mjs';
 import { createLogin } from './login.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const distRoot = process.env.CRITTER_DIST_DIR || path.join(root, 'dist');
 const port = Number(process.env.PORT || 4329);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('PORT must be an integer from 1024 to 65535.');
 const store = new Store(process.env.CRITTER_DATA_DIR || path.join(root, '.local'));
@@ -167,8 +168,8 @@ async function execute(job, settings, existing, signal) {
   } finally { if (current?.job.id === job.id) current = null; }
 }
 
-app.use(express.static(path.join(root, 'dist')));
-app.get('/', (_req, res) => res.sendFile(path.join(root, 'dist/index.html')));
+app.use(express.static(distRoot));
+app.get('/', (_req, res) => res.sendFile(path.join(distRoot, 'index.html')));
 app.use((err, _req, res, _next) => res.status(err.status || 500).json({ error: err.status === 400 ? 'Invalid JSON request.' : safeError(err) }));
 const server = app.listen(port, '127.0.0.1');
 server.once('listening', () => {
