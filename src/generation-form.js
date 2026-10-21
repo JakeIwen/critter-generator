@@ -1,5 +1,5 @@
 import { sliders } from '../shared/sliders.mjs';
-import { presets } from './content.js';
+import { presets } from './presets.js';
 import { icon } from './icons.js';
 
 export function mountGenerationForm(byId, onGenerate) {

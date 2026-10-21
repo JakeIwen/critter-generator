@@ -1,10 +1,23 @@
-import { sliders } from '../shared/sliders.mjs';
 import { api, specimenFile } from './api.js';
 import { escape, usedSliders } from './collection.js';
 import { icon } from './icons.js';
 import { mountViewer } from './viewer.js';
 
 const note = (title, text) => `<div class="note"><h3>${title}</h3><p>${escape(text)}</p></div>`;
+
+function renderFieldNotes(byId, specimen, activeJob, onPortrait, onReuse) {
+  byId('field-notes').innerHTML = `<div class="notes-heading"><span class="eyebrow">${specimen.demo ? 'EXAMPLE FIELD NOTES' : 'FIELD NOTES'}</span>${icon('book',19)}</div>
+    <h2>${escape(specimen.englishName)}</h2><p class="latin">${escape(specimen.latinName)}</p><p class="epithet">${escape(specimen.epithet)}</p>
+    <div class="trait-chips">${usedSliders(specimen.settings).map(({ id, short }) => `<span class="chip-${id}">${short} ${specimen.settings[id]}</span>`).join('')}<span>FICTIONAL SPECIES</span></div>
+    <p class="description">${escape(specimen.description)}</p>
+    ${note('Habitat',specimen.habitat)}${note('Diet',specimen.diet)}${note('Courtship & biology',specimen.courtship)}${note('Threat assessment',specimen.danger)}
+    <blockquote><span>FROM THE FIELD JOURNAL</span>“${escape(specimen.fieldNote)}”</blockquote>
+    <div class="notes-downloads">${specimen.image ? `<a href="${specimenFile(specimen,'portrait.png',true)}">${icon('download',14)} Save portrait</a>` : '<button id="retry-portrait">'+icon('sparkle',14)+' '+(specimen.demo ? 'Illustrate example' : 'Retry portrait')+'</button>'}<a href="${specimenFile(specimen,'record.json',true)}">${icon('download',14)} Field notes</a><button id="reuse-settings">${icon('reset',14)} Use these settings</button></div>
+    ${specimen.imageError ? `<p class="inline-error">Portrait incomplete: ${escape(specimen.imageError)}</p>` : ''}`;
+  if (byId('retry-portrait')) byId('retry-portrait').onclick = () => onPortrait(specimen);
+  if (byId('retry-portrait')) byId('retry-portrait').disabled = activeJob;
+  byId('reuse-settings').onclick = () => onReuse(specimen.settings);
+}
 
 export function createSpecimenView(byId, { onPortrait, onReuse, onError }) {
   let activeJob = false;
@@ -57,17 +70,7 @@ export function createSpecimenView(byId, { onPortrait, onReuse, onError }) {
     byId('cad-download').href = specimenFile(specimen, 'model.scad', true);
     const { print } = specimen;
     byId('print-info').innerHTML = `<span>${icon('check',14)} Closed, single solid</span><span>${print.dimensions.map(escape).join(' × ')} mm</span><span>${print.triangles.toLocaleString()} triangles</span>${print.minFeatureDiameterMm ? `<span>Thinnest feature ${escape(print.minFeatureDiameterMm)} mm</span>` : ''}${print.overhangPct !== undefined ? `<span>${escape(Math.round(print.overhangPct))}% overhang</span>` : ''}`;
-    byId('field-notes').innerHTML = `<div class="notes-heading"><span class="eyebrow">${specimen.demo ? 'EXAMPLE FIELD NOTES' : 'FIELD NOTES'}</span>${icon('book',19)}</div>
-    <h2>${escape(specimen.englishName)}</h2><p class="latin">${escape(specimen.latinName)}</p><p class="epithet">${escape(specimen.epithet)}</p>
-    <div class="trait-chips">${usedSliders(specimen.settings).map(({ id, short }) => `<span class="chip-${id}">${short} ${specimen.settings[id]}</span>`).join('')}<span>FICTIONAL SPECIES</span></div>
-    <p class="description">${escape(specimen.description)}</p>
-    ${note('Habitat',specimen.habitat)}${note('Diet',specimen.diet)}${note('Courtship & biology',specimen.courtship)}${note('Threat assessment',specimen.danger)}
-    <blockquote><span>FROM THE FIELD JOURNAL</span>“${escape(specimen.fieldNote)}”</blockquote>
-    <div class="notes-downloads">${specimen.image ? `<a href="${specimenFile(specimen,'portrait.png',true)}">${icon('download',14)} Save portrait</a>` : '<button id="retry-portrait">'+icon('sparkle',14)+' '+(specimen.demo ? 'Illustrate example' : 'Retry portrait')+'</button>'}<a href="${specimenFile(specimen,'record.json',true)}">${icon('download',14)} Field notes</a><button id="reuse-settings">${icon('reset',14)} Use these settings</button></div>
-    ${specimen.imageError ? `<p class="inline-error">Portrait incomplete: ${escape(specimen.imageError)}</p>` : ''}`;
-    if (byId('retry-portrait')) byId('retry-portrait').onclick = () => onPortrait(specimen);
-    if (byId('retry-portrait')) byId('retry-portrait').disabled = activeJob;
-    byId('reuse-settings').onclick = () => onReuse(specimen.settings);
+    renderFieldNotes(byId, specimen, activeJob, onPortrait, onReuse);
     await showView(specimen.image ? tab : 'model');
   }
 

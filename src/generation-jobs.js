@@ -1,7 +1,6 @@
 import { api } from './api.js';
-import { stageTitles } from './content.js';
-
 const runningStatuses = ['queued', 'running'];
+const stageTitles = {design:'Discovering a new species',model:'Bringing it into three dimensions',image:'Putting a face to the name',done:'Discovery complete'};
 
 export function createJobController(byId, { onBusy, onPending, onSpecimen, onComplete, onError }) {
   let activeJob = null;
