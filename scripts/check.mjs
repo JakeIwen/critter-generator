@@ -31,16 +31,16 @@ async function availablePort() {
 }
 async function waitForServer(origin) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    try { if ((await fetch(`${origin}/api/specimens`)).ok) return; } catch {}
+    try { if ((await fetch(`${origin}/api/specimens`, { signal: AbortSignal.timeout(1_000) })).ok) return; } catch {}
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(`isolated server did not become ready at ${origin}`);
 }
 async function stopServer(child) {
-  if (!child || child.exitCode !== null) return;
+  if (!child || (child.exitCode !== null || child.signalCode !== null)) return;
   child.kill('SIGTERM');
   const waitForExit = timeoutMs => new Promise(resolve => {
-    if (child.exitCode !== null) return resolve(true);
+    if ((child.exitCode !== null || child.signalCode !== null)) return resolve(true);
     const timer = setTimeout(() => resolve(false), timeoutMs);
     child.once('exit', () => { clearTimeout(timer); resolve(true); });
   });
@@ -65,7 +65,7 @@ try {
     server.once('exit', code => reject(new Error(`isolated server exited during startup with ${code}`)));
   });
   await Promise.race([waitForServer(`http://127.0.0.1:${port}`), startupError]);
-  const servedIndex = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  const servedIndex = await (await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(5_000) })).text();
   const builtIndex = await readFile(path.join(scratch, 'dist/index.html'), 'utf8');
   if (servedIndex !== builtIndex) throw new Error('isolated server did not serve the scratch build');
   await run(process.execPath, ['scripts/verify-http.mjs'], { env });

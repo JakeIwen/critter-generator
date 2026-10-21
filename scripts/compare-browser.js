@@ -8,6 +8,7 @@ async page => {
     let jobPolls = 0;
     await page.setViewportSize(viewport);
     await page.unrouteAll({ behavior: 'wait' });
+    await page.route(`${origin}/api/status`, route => route.fulfill({ json: { connected: false, reason: 'Fixture connection' } }));
     if (['job', 'collectionPolling', 'modelCompletion', 'restoredJob'].includes(state)) {
       await page.route(`${origin}/api/status`, route => {
         events.push('status');
