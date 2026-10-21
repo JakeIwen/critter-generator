@@ -162,11 +162,14 @@ the same primitive recipe but OpenSCAD's sphere tessellation can differ from the
 
 ```sh
 cd /path/to/critter-generator
-npm test
-npm run build
-npm run verify:http  # needs the local app running
+npm run check
 npm audit
 ```
+
+`npm run check` runs the unit tests, a scratch production build, and HTTP/binary-download
+verification against a self-started server with temporary data. It does not use `.local`, Codex
+credentials, live generation, or the normal port. `npm run verify:http` remains available when
+checking an already running instance explicitly.
 
 For frontend hot reload, keep `npm run serve` in one Terminal and `npm run dev` in another.
 The development frontend at http://127.0.0.1:5173 proxies the backend at port 4329.

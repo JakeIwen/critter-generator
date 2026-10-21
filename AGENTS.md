@@ -15,11 +15,12 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `server/store.mjs`: SQLite and specimen-asset persistence.
 - `server/geometry.mjs`: solid geometry, STL, and OpenSCAD generation.
 - `server/access.mjs` and `server/login.mjs`: optional public-host authentication.
+- `scripts/check.mjs`: complete isolated suite (`npm run check`).
 - `scripts/verify-http.mjs`: HTTP and binary-output checks against a running isolated server.
 
 ## Working agreements
 
-- Run `npm test` and `npm run build` before committing. Run `npm run verify:http` against an isolated server when server behavior changes.
+- Run `npm run check` before committing. It runs every unit test, builds into a temporary directory, starts a server with a temporary data root and port, then runs HTTP and binary-download verification. It must not use `.local`, Codex credentials, or live generation.
 - `.local/critters.sqlite` and `.local/specimens/` are authoritative user data. Never use them in tests or replace them during deployment.
 - Preserve `server/index.mjs`, port 4329, loopback binding, and asset/API routes as deployment contracts.
 - Live generation is nondeterministic and is not a refactor oracle. Compare fixed specimen HTTP bodies, STL/SCAD bytes, DOM, and computed styles instead.

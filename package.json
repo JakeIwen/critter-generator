@@ -11,6 +11,7 @@
     "serve": "node server/index.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "check": "node scripts/check.mjs",
     "test": "node --test tests/*.test.mjs",
     "verify:http": "node scripts/verify-http.mjs",
     "stop": "node scripts/stop.mjs"
