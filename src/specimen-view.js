@@ -1,6 +1,6 @@
 import { api, specimenFile } from './api.js';
-import { escape, usedSliders } from './collection.js';
 import { icon } from './icons.js';
+import { escape, usedSliders } from './specimen-format.js';
 import { mountViewer } from './viewer.js';
 
 const note = (title, text) => `<div class="note"><h3>${title}</h3><p>${escape(text)}</p></div>`;
