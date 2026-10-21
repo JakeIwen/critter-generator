@@ -191,6 +191,8 @@ Live browser verification covered generation, interruption, collection navigatio
 - `server/access.mjs`: Cloudflare Access token verification for optional public hosting.
 - `server/login.mjs`: public-host sign-in (passcode or Access email), session cookies, and lockout.
 - `src/`: frontend and Three.js viewer, bundled locally with Vite.
+- `src/main.js`: frontend bootstrap; `src/studio.js` owns the laboratory, collection, specimen,
+  and generation-job interactions; `src/viewer.js` owns the Three.js preview.
 
 The app follows the [official Codex app-server protocol](https://developers.openai.com/codex/app-server/),
 uses [Manifold](https://manifoldcad.org/docs/jsuser/classes/Manifold.html) for solid geometry, and
