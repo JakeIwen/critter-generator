@@ -21,6 +21,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `server/access.mjs` and `server/login.mjs`: optional public-host authentication.
 - `scripts/check.mjs`: complete isolated suite (`npm run check`).
 - `scripts/verify-http.mjs`: HTTP and binary-output checks against a running isolated server.
+- `scripts/compare-browser.js`: browser_clean refactor oracle for desktop/phone DOM and computed styles.
 
 ## Working agreements
 
