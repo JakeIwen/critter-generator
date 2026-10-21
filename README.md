@@ -3,6 +3,14 @@
 A locally hosted fictional-creature studio: generated portraits, English and invented Latin names,
 field notes, five personality sliders, and a rotatable 3D-printable sculpture.
 
+## Screenshots
+
+| Creature studio | Saved collection |
+|---|---|
+| ![Creature controls, generated portrait, and field notes](docs/screenshots/studio.png) | ![Saved fictional creatures](docs/screenshots/collection.png) |
+
+Both views show the bundled fictional example specimen.
+
 ## Run
 
 ```sh
