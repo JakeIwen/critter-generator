@@ -29,6 +29,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `server/codex.mjs`: Codex app-server boundary.
 - `server/store.mjs`: SQLite and specimen-asset persistence.
 - `server/geometry.mjs`: solid geometry, STL, and OpenSCAD generation.
+- `server/sculpt-head.mjs`: connected head, eyes, horns and antennae shared by the STL/SCAD recipe.
 - `server/access.mjs` and `server/login.mjs`: optional public-host authentication.
 - `scripts/check.mjs`: complete isolated suite (`npm run check`).
 - `scripts/verify-http.mjs`: HTTP and binary-output checks against a running isolated server.
