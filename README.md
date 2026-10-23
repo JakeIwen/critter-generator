@@ -131,6 +131,19 @@ Access must bypass the rest of the host; otherwise the passcode can never be rea
 requests work as before. Everyone signed in shares one collection and the host's Codex login.
 The lionfeather.dev deployment lives in the `lionfeather-edge` repository (`apps/critter/`).
 
+From this checkout, deploy an update with:
+
+```sh
+npm run deploy
+```
+
+This runs the complete isolated check suite, then calls the existing deployer in the sibling
+`../lionfeather-edge` checkout with this checkout as its source. Set `LIONFEATHER_EDGE_DIR` if the
+hosting repo lives elsewhere. The deployer copies the working tree, installs dependencies and builds
+on the server, restarts `critter.service`, and checks its status endpoint. It excludes local data,
+credentials and dependencies from the transfer; server specimens remain in `/var/lib/critter/data`.
+Review uncommitted changes before deploying because they are included.
+
 ## 3D printing
 
 The artwork and sculpture share a structured anatomy specification. **The sculpture is a simplified

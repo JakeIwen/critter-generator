@@ -10,6 +10,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 | `scripts/check.mjs` | `npm run check`, pre-commit verification | `scripts/check.mjs` |
 | `scripts/verify-http.mjs` | `npm run verify:http`, isolated check server | `scripts/verify-http.mjs` |
 | `scripts/stop.mjs` | `npm run stop`, foreground operator workflow | `scripts/stop.mjs` |
+| `scripts/deploy.mjs` | `npm run deploy` | `scripts/deploy.mjs` |
 
 ## Where things live
 
@@ -34,6 +35,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `server/sculpt-head.mjs`: connected head, eyes, horns and antennae shared by the STL/SCAD recipe.
 - `server/access.mjs` and `server/login.mjs`: optional public-host authentication.
 - `scripts/check.mjs`: complete isolated suite (`npm run check`).
+- `scripts/deploy.mjs`: invokes the hosting repo's Critter deployer with this source checkout; `npm run deploy` runs the complete suite first. `LIONFEATHER_EDGE_DIR` overrides the default sibling hosting checkout.
 - `scripts/verify-http.mjs`: HTTP and binary-output checks against a running isolated server.
 - `scripts/compare-browser.js`: browser_clean refactor oracle for desktop/phone DOM and computed styles.
 - `tests/backend-layout.test.mjs`: focused gate for adapter direction, stable command targets and isolated-check boundaries. The generic backend-layout audit remains advisory because no layout baseline is written.
