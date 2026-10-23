@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { Settings, GenerationSpecimen, specimenSchema, creaturePrompt, illustrationPrompt, example } from '../shared/specimen.mjs';
+import { Settings, illustrationPrompt, example } from '../shared/specimen.mjs';
+import { createAnatomyPlan, plannedDesign } from '../shared/anatomy-plan.mjs';
 import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
 import { Codex, imageBytes, safeError } from './codex.mjs';
 import { Store } from './store.mjs';
@@ -121,10 +122,10 @@ app.post('/api/jobs/:id/cancel', (req, res) => {
 
 function update(job, data) { Object.assign(job, data); store.save('jobs', job.id, job); }
 const DESIGN_ATTEMPTS = 3;
-async function designWithRetries(job, settings, signal) {
+async function designWithRetries(job, design, signal) {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await codex.run({ prompt: creaturePrompt(settings), schema: specimenSchema, signal,
+      return await codex.run({ prompt: design.prompt, schema: design.schema, signal,
         onThread: threadId => update(job, { designThreadId: threadId }) });
     } catch (e) {
       if (e.code !== 'runaway_output' || attempt >= DESIGN_ATTEMPTS || signal.aborted) throw e;
@@ -144,14 +145,17 @@ async function execute(job, settings, existing, signal) {
   try {
     update(job, { status: 'running', message: 'Inventing anatomy and writing field notes…' });
     if (!existing) {
-      const generated = await designWithRetries(job, settings, signal);
+      const variation = createAnatomyPlan(settings, job.id, store.list('specimens'));
+      update(job, { variation });
+      const design = plannedDesign(settings, variation);
+      const generated = await designWithRetries(job, design, signal);
       if (signal.aborted) throw new Error('Generation cancelled.');
       let parsed;
-      try { parsed = GenerationSpecimen.parse(JSON.parse(generated.text)); } catch { throw new Error('Codex returned an invalid specimen. Please try again.'); }
+      try { parsed = design.parse(JSON.parse(generated.text)); } catch { throw new Error('Codex returned an invalid specimen. Please try again.'); }
       update(job, { stage: 'model', message: 'Sculpting and checking the printable solid…' });
       const id = randomUUID();
       const print = await store.model(id, parsed.anatomy, settings.height, settings.baseplate);
-      specimen = { ...parsed, id, settings, print, createdAt: new Date().toISOString(), image: false, demo: false };
+      specimen = { ...parsed, id, settings, variation, print, createdAt: new Date().toISOString(), image: false, demo: false };
       store.save('specimens', id, specimen); update(job, { specimenId: id });
     }
     if (signal.aborted) throw new Error('Generation cancelled.');

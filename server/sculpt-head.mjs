@@ -1,6 +1,13 @@
-export function sculptHead(a, head, z, { ellipsoid, link, thick }) {
+export function sculptHead(a, head, z, primitives) {
   const { bodyLength: l, headSize: hs } = a;
-  link([0, -l * .53, z], head, hs * .69, hs * .7);
+  const axes = [a.headWidth, a.headDepth, a.headHeight];
+  const point = p => p.map((value, i) => head[i] + (value - head[i]) * axes[i]);
+  const { thick } = primitives;
+  const ellipsoid = (p, r, tag) => primitives.ellipsoid(point(p),
+    tag === 'eye' ? r : r.map((value, i) => Math.max(value * axes[i], thick(0))), tag);
+  const link = (p, q, r, s, tag) => primitives.link(point(p), point(q), r, s, tag);
+  // Neck is in body coordinates; it must not follow the head-axis transform.
+  primitives.link([0, -l * .53, z], head, hs * .69, hs * .7 * Math.min(...axes));
   ellipsoid(head, [hs, hs * .88, hs * .86]);
   ellipsoid([0, head[1] - hs * .65, head[2] - hs * .22], [hs * .65, hs * .55, hs * .36], 'accent');
   for (let i = 0; i < a.eyes; i++) {
@@ -12,7 +19,7 @@ export function sculptHead(a, head, z, { ellipsoid, link, thick }) {
   for (let i = 0; i < a.horns; i++) {
     const x = a.horns === 1 ? 0 : -hs * .65 + i * hs * 1.3 / (a.horns - 1);
     const root = [x, head[1] + 1.5, head[2] + hs * .58];
-    const tip = [x * 1.28, head[1] + 3, root[2] + a.hornLength];
+    const tip = [x * 1.28, head[1] + 3 + a.hornSweep * a.hornLength * .8, root[2] + a.hornLength];
     link(root, tip, thick(3.2), thick(1.1), 'accent');
   }
   for (let i = 0; i < a.antennae; i++) {

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createModel, stlBuffer, recipe, PRINT_RULES } from '../server/geometry.mjs';
 import { example, Anatomy } from '../shared/specimen.mjs';
+import { createAnatomyPlan } from '../shared/anatomy-plan.mjs';
 
 function verifySerializedSolid(buffer, height) {
   const count = buffer.readUInt32LE(80);
@@ -145,4 +146,54 @@ test('optional baseplate changes the exported solid and preserves grounded SCAD 
   }
   const plain = await createModel(anatomy,100,false);
   assert(plain.info.volumeCm3 < based.info.volumeCm3, 'STL volume loses the slab');
+});
+
+test('sampled physical diversity survives export as connected sturdy solids at both print-height limits', async () => {
+  const history = [], footprints = [], shapes = new Set();
+  for (let index = 0; index < 24; index++) {
+    const variation = createAnatomyPlan({ absurdity: 85, lethality: 75 }, `mesh-${index}`, history);
+    const anatomy = { ...example.anatomy, ...variation.anatomy };
+    history.unshift({ anatomy, variation });
+    for (const [height, baseplate] of [[60, true], [500, false]]) {
+      const model = await createModel(anatomy, height, baseplate);
+      assert.equal(model.info.components, 1, `${variation.family} ${index}`);
+      verifySerializedSolid(stlBuffer(model), height);
+      assert(model.info.minFeatureDiameterMm >= PRINT_RULES.minFeatureMm);
+      if (anatomy.legPairs) assert(model.info.legShaftDiameterMm >= 5);
+      if (baseplate) assert(model.info.stable);
+      else footprints.push(model.info.dimensions[1] / model.info.dimensions[0]);
+      shapes.add(JSON.stringify(model.info.dimensions));
+    }
+  }
+  assert.equal(shapes.size, 48, 'Every sampled solid has distinct exported dimensions');
+  assert(Math.max(...footprints) / Math.min(...footprints) > 2, 'Body plans produce substantially different footprints');
+});
+
+test('head proportions and stance change physical geometry independently of color and appendage counts', async () => {
+  const anatomy = { ...Anatomy.parse(example.anatomy), legLength: 3, horns: 2 };
+  const original = await createModel(anatomy, 100, false);
+  const recolored = await createModel({ ...anatomy, color: '#123456', accent: '#abcdef' }, 100, false);
+  assert.deepEqual(stlBuffer(recolored), stlBuffer(original), 'Skin alone does not alter geometry');
+  for (const change of [{ headWidth: 1.4 }, { headDepth: 1.5 }, { headHeight: .65 }, { stanceWidth: 1.3 }, { hornSweep: -1 }]) {
+    const model = await createModel({ ...anatomy, ...change }, 100, false);
+    assert.notDeepEqual(stlBuffer(model), stlBuffer(original), `${Object.keys(change)[0]} changes the exported solid`);
+    assert.equal(model.info.components, 1);
+  }
+});
+
+test('expanded proportion boundaries keep head ornaments connected and features thick', async () => {
+  for (let mask = 0; mask < 16; mask++) {
+    const anatomy = { ...example.anatomy, bodyLength: mask & 1 ? 42 : 18, bodyWidth: mask & 2 ? 25 : 9,
+      bodyHeight: mask & 4 ? 26 : 8, headSize: mask & 8 ? 16 : 8, neckLength: mask & 4 ? 14 : 0,
+      headWidth: mask & 2 ? .7 : 1.4, headDepth: mask & 1 ? .7 : 1.5, headHeight: mask & 8 ? .65 : 1.25,
+      stanceWidth: mask & 2 ? 1.3 : .85, hornSweep: mask & 4 ? -1 : 1, horns: 6,
+      hornLength: 16, antennae: 4, eyes: 6, legPairs: mask & 1 ? 4 : 0, legLength: 6 };
+    for (const baseplate of [true, false]) {
+      const model = await createModel(anatomy, 60, baseplate);
+      verifySerializedSolid(stlBuffer(model), 60);
+      assert.equal(model.info.components, 1);
+      assert(model.info.minFeatureDiameterMm >= PRINT_RULES.minFeatureMm, `Boundary ${mask}`);
+      if (anatomy.legPairs) assert(model.info.legShaftDiameterMm >= 5);
+    }
+  }
 });

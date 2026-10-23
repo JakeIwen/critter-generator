@@ -11,6 +11,10 @@ field notes, five personality sliders, and a rotatable 3D-printable sculpture.
 
 Both views show the bundled fictional example specimen.
 
+![Six sampled silhouettes shown with the same material at 100 mm](docs/screenshots/diversity.png)
+
+These six physical plans use the same sculpture material, so their differences come from geometry.
+
 ## Run
 
 ```sh
@@ -63,6 +67,12 @@ available and otherwise the account's returned default. No global Codex configur
 One generation runs at a time. Closing/reloading the page does not cancel it. Cancel explicitly
 with the progress card. If the image step fails, the completed notes and model remain saved;
 **Retry portrait** retries only the artwork. Interrupted jobs are recorded after server restart.
+
+Each generation starts with a seeded physical plan: one of six silhouette families, varied torso and
+head proportions, stance width, appendage counts, horn sweep, and tail length/curl. Recent specimens
+discourage repeated families and counts. Empty-prompt generations must keep the sampled anatomy;
+with a text prompt, Codex may change traits to satisfy explicit physical requests. The seed and starting
+plan are saved in the record's `variation` field. Portrait retries keep the existing anatomy.
 
 ## Local database and files
 
@@ -143,7 +153,7 @@ enforced in printed millimeters so they hold at every height:
 - The model info reports the thinnest feature, base thickness, the share of surface that overhangs
   more than 45° (support needed), and whether the center of mass sits over the middle of the base.
 
-New generations favor squat, sturdy animals. The generation schema caps belly clearance at six
+New generations vary their body and head silhouettes while retaining sturdy legs. The generation schema caps belly clearance at six
 relative units, and the CAD builder additionally caps it at one quarter of the torso's vertical
 semi-axis. Leg shafts grow with body width and use broad joints and feet. The boundary-case tests
 check a nominal leg shaft diameter of at least 5 mm, including 60 mm-tall sculptures. These are
@@ -180,8 +190,10 @@ The development frontend at http://127.0.0.1:5173 proxies the backend at port 43
 `PORT=4330 npm start` changes the production port (adjust the development proxy if using hot reload).
 
 Tests verify STL edge closure and winding after binary serialization, requested dimensions,
-16 extreme anatomy combinations, SQLite persistence/migration, malformed inputs, and Codex event
+extreme anatomy combinations, 120 seeded anatomy plans and 48 sampled solid exports, SQLite persistence/migration, malformed inputs, and Codex event
 ownership/error handling. The HTTP check verifies actual asset downloads and local request boundaries.
+An isolated Codex protocol fixture checks the generation pipeline through persisted anatomy, mesh and
+portrait requests without contacting a model or reading account credentials.
 Live browser verification covered generation, interruption, collection navigation, artwork loading,
 3D rendering, responsive width at 390 px, and restart persistence.
 

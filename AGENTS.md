@@ -25,6 +25,8 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `shared/sliders.mjs`: canonical slider definitions shared by browser and server.
 - `shared/print-settings.mjs`: canonical print-height range shared by browser, validation, and CAD generation.
 - `shared/specimen.mjs`: canonical input/anatomy schemas and generation prompts.
+- `shared/body-plans.mjs`: silhouette families and physical sampling ranges.
+- `shared/anatomy-plan.mjs`: seeded anatomy sampling, recent-history balancing and per-generation output validation.
 - `server/index.mjs`: Express wiring and generation lifecycle; `CRITTER_DIST_DIR` selects the static asset root for isolated checks.
 - `server/codex.mjs`: Codex app-server boundary.
 - `server/store.mjs`: SQLite and specimen-asset persistence.
@@ -43,3 +45,4 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - Preserve `server/index.mjs`, port 4329, loopback binding, and asset/API routes as deployment contracts.
 - Live generation is nondeterministic and is not a refactor oracle. Compare fixed specimen HTTP bodies, STL/SCAD bytes, DOM, and computed styles instead.
 - Print heights are 60–500 mm, including the optional baseplate. Omitted `baseplate` settings default to enabled for older clients and saved recipes; never rewrite saved specimen assets to change this choice.
+- New jobs sample a versioned anatomy plan from the job ID and recent specimens. Empty-text generation locks those physical traits; free text can override them within the anatomy schema. Store the starting plan as `variation`; portrait retries never reroll it. Old anatomy defaults head/stance multipliers to 1 and horn sweep to 0.

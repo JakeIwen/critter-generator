@@ -11,7 +11,7 @@ export const PRINT_RULES = {
   baseChamferMm: 0.8,   // bottom-edge chamfer that absorbs first-layer squish ("elephant's foot")
   overhangDeg: 45,      // faces tilted further than this from vertical need support
 };
-export const DESIGN_VERSION = 'printable-v4';
+export const DESIGN_VERSION = 'printable-v5';
 const BASE_TOP = 3;
 const GROUNDED_TAIL = 10;
 
@@ -47,8 +47,8 @@ export function recipe(input, mmPerUnit = 1, baseplate = true) {
     const y = a.legPairs === 1 ? 0 : -l * .64 + i * l * 1.28 / (a.legPairs - 1);
     for (const side of [-1, 1]) {
       const hip = [side * w * .66, y, z - h * .55];
-      const knee = [side * w * 1.02, y + 1, 6 + legs.clearance * .4];
-      const foot = [side * w * 1.12, y - 1, 4.2];
+      const knee = [side * w * 1.02 * a.stanceWidth, y + 1, 6 + legs.clearance * .4];
+      const foot = [side * w * 1.12 * a.stanceWidth, y - 1, 4.2];
       link(hip, knee, legs.radius * 1.18, legs.radius, 'leg');
       link(knee, foot, legs.radius, legs.radius, 'leg');
       ellipsoid(foot, [legs.radius * 1.25, legs.radius * 1.45, 3.8], 'foot');
