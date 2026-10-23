@@ -1,4 +1,5 @@
 import { sliders } from '../shared/sliders.mjs';
+import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
 import { icon } from './icons.js';
 
 function slider({ id, name, initial: value, low, high, hint }) {
@@ -24,15 +25,16 @@ export function renderStudio(root) {
           <div class="sliders">
             ${sliders.map(slider).join('')}
           </div>
-          <div class="height-control"><label for="height">${icon('cube',16)} Print height</label><div><input id="height" type="number" value="100" min="60" max="180" step="1" required aria-label="Print height in millimeters"/><span>mm</span></div></div>
-          <p class="micro">60–180 mm · display base included</p>
+          <div class="height-control"><label for="height">${icon('cube',16)} Print height</label><div><input id="height" type="number" value="${PRINT_HEIGHT.initial}" min="${PRINT_HEIGHT.min}" max="${PRINT_HEIGHT.max}" step="1" required aria-label="Print height in millimeters"/><span>mm</span></div></div>
+          <p class="micro">${PRINT_HEIGHT.min}–${PRINT_HEIGHT.max} mm · total model height</p>
+          <label class="baseplate-control" for="baseplate"><input id="baseplate" type="checkbox" checked/> Include baseplate</label>
           <button id="generate" class="button primary" type="submit">${icon('sparkle')} Create a critter ${icon('arrow')}</button>
-          <p class="generation-note">Made with Codex.<br>New discoveries usually take a minute or two.</p>
+          <p class="generation-note">Estimated wait: 2 min 10 sec.</p>
         </form>
         <div class="presets"><span class="eyebrow">NEED A NUDGE?</span><button data-preset="gentle">Oddly plausible <span>↗</span></button><button data-preset="weird">Nature’s mistake <span>↗</span></button><button data-preset="danger">Absolute menace <span>↗</span></button></div>
       </aside>
       <section class="specimen-stage" aria-label="Specimen artwork and printable model">
-        <div id="status-box" class="status-box hidden" role="status" aria-live="polite"><div><span class="spinner"></span><div><strong id="status-title">Discovering a new species</strong><p id="status-message"></p></div></div><button id="cancel">Cancel</button></div>
+        <div id="status-box" class="status-box hidden"><div class="status-header"><div role="status" aria-live="polite"><strong id="status-title">Discovering a new species</strong><p id="status-message"></p></div><button id="cancel">Cancel</button></div><progress id="status-progress" max="100" value="0" aria-label="Estimated generation progress"></progress><p id="status-estimate" class="status-estimate"></p></div>
         <div class="portrait-card">
           <div class="stage-top"><span class="specimen-tag" id="specimen-tag">SPECIMEN / 001</span><div class="view-tabs" role="tablist" aria-label="Specimen view"><button id="portrait-tab" role="tab" aria-selected="true">Portrait</button><button id="model-tab" role="tab" aria-selected="false">${icon('cube',14)} 3D print</button></div></div>
           <div id="visual" class="visual"><div class="loading-visual"><span class="spinner"></span><p>Opening the cabinet…</p></div></div>
@@ -40,7 +42,7 @@ export function renderStudio(root) {
         </div>
         <div class="download-card card"><div><span class="eyebrow">FROM IMAGINATION TO YOUR DESK</span><h3>Make it tangible.</h3></div><div class="download-actions"><a id="stl-download" class="button primary" aria-label="Download printable STL">${icon('download')} STL</a><a id="cad-download" class="button secondary" aria-label="Download editable OpenSCAD CAD source">${icon('cube')} CAD source</a></div></div>
         <div id="print-info" class="print-info"></div>
-        <p class="print-caption">The 3D print is a simplified sculpture of the same anatomy. Artwork can vary in detail. Print upright on the chamfered base with supports for the belly and chin; check the model in your slicer.</p>
+        <p class="print-caption">The 3D print is a simplified sculpture of the same anatomy. Artwork can vary in detail. Check the model and supports in your slicer.</p>
       </section>
       <aside id="field-notes" class="field-notes card" aria-label="Specimen field notes"><div class="loading-visual"><span class="spinner"></span></div></aside>
     </section>

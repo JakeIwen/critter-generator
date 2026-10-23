@@ -21,7 +21,7 @@ export function mountGenerationForm(byId, onGenerate) {
   });
   byId('generator-form').onsubmit = event => {
     event.preventDefault();
-    const settings = { prompt: byId('prompt').value.trim() };
+    const settings = { prompt: byId('prompt').value.trim(), baseplate: byId('baseplate').checked };
     for (const id of [...sliders.map(slider => slider.id), 'height']) settings[id] = Number(byId(id).value);
     onGenerate(settings);
   };
@@ -29,6 +29,7 @@ export function mountGenerationForm(byId, onGenerate) {
     applySettings(settings) {
       byId('prompt').value = settings.prompt;
       byId('height').value = settings.height;
+      byId('baseplate').checked = settings.baseplate ?? true;
       applySettings(settings);
       byId('generator-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
     },

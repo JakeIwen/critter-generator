@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sliders } from './sliders.mjs';
+import { PRINT_HEIGHT } from './print-settings.mjs';
 
 const count = (max) => z.number().int().min(0).max(max);
 const level = z.number().int().min(0).max(100);
@@ -9,7 +10,8 @@ const original = new Set(['absurdity', 'deviancy', 'lethality']);
 export const Settings = z.object({
   prompt: z.string().trim().max(1000).default(''),
   ...Object.fromEntries(sliders.map(({ id }) => [id, original.has(id) ? level : level.default(0)])),
-  height: z.number().int().min(60).max(180),
+  height: z.number().int().min(PRINT_HEIGHT.min).max(PRINT_HEIGHT.max),
+  baseplate: z.boolean().default(true),
 }).strict();
 export const Anatomy = z.object({
   bodyLength: z.number().min(18).max(34),

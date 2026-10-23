@@ -17,11 +17,13 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `src/studio.js`: thin browser feature wiring and page navigation.
 - `src/template.js`, `src/icons.js`, and `src/presets.js`: application markup, SVG icons, and generator presets.
 - `src/generation-form.js` and `src/generation-jobs.js`: generator inputs and job lifecycle.
+- `src/generation-progress.js`: 130-second generation estimate, elapsed/remaining display, and timer recovery.
 - `src/specimen-view.js`, `src/collection.js`, and `src/specimen-format.js`: specimen stage, collection rendering, and shared specimen display formatting.
 - `src/api.js` and `src/connection.js`: shared browser API and Codex connection status boundaries.
 - `src/viewer.js`: Three.js specimen viewer.
 - `src/style.css`: the single frontend stylesheet and design-token owner.
 - `shared/sliders.mjs`: canonical slider definitions shared by browser and server.
+- `shared/print-settings.mjs`: canonical print-height range shared by browser, validation, and CAD generation.
 - `shared/specimen.mjs`: canonical input/anatomy schemas and generation prompts.
 - `server/index.mjs`: Express wiring and generation lifecycle; `CRITTER_DIST_DIR` selects the static asset root for isolated checks.
 - `server/codex.mjs`: Codex app-server boundary.
@@ -39,3 +41,4 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `.local/critters.sqlite` and `.local/specimens/` are authoritative user data. Never use them in tests or replace them during deployment.
 - Preserve `server/index.mjs`, port 4329, loopback binding, and asset/API routes as deployment contracts.
 - Live generation is nondeterministic and is not a refactor oracle. Compare fixed specimen HTTP bodies, STL/SCAD bytes, DOM, and computed styles instead.
+- Print heights are 60–500 mm, including the optional baseplate. Omitted `baseplate` settings default to enabled for older clients and saved recipes; never rewrite saved specimen assets to change this choice.

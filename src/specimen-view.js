@@ -37,7 +37,7 @@ export function createSpecimenView(byId, { onPortrait, onReuse, onError }) {
     const specimen = selected;
     if (next === 'portrait' && specimen.image) {
       byId('visual').innerHTML = `<img class="portrait" src="${specimenFile(specimen,'portrait.png')}" alt="Generated portrait of ${escape(specimen.englishName)}"/>`;
-      byId('view-caption').textContent = 'IMAGINED BY CODEX · CATALOGUED BY YOU';
+      byId('view-caption').textContent = '';
       byId('visual').querySelector('img').onerror = () => { if (token === viewToken) byId('visual').innerHTML = '<div class="loading-visual"><p>The portrait could not load. Try the 3D print tab or reload.</p></div>'; };
       return;
     }

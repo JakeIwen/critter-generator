@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { Settings, GenerationSpecimen, specimenSchema, creaturePrompt, illustrationPrompt, example } from '../shared/specimen.mjs';
+import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
 import { Codex, imageBytes, safeError } from './codex.mjs';
 import { Store } from './store.mjs';
 import { DESIGN_VERSION } from './geometry.mjs';
@@ -102,7 +103,7 @@ app.get('/api/specimens/:id/files/:name', (req, res) => {
 });
 app.post('/api/generate', (req, res) => {
   const parsed = Settings.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Use slider values from 0–100, height 60–180 mm, and a prompt under 1,000 characters.' });
+  if (!parsed.success) return res.status(400).json({ error: `Use slider values from 0–100, height ${PRINT_HEIGHT.min}–${PRINT_HEIGHT.max} mm, a baseplate checkbox value, and a prompt under 1,000 characters.` });
   if (current) return res.status(409).json({ error: 'A specimen is already being generated.', jobId: current.job.id });
   res.status(202).json(startJob(parsed.data));
 });
@@ -149,7 +150,7 @@ async function execute(job, settings, existing, signal) {
       try { parsed = GenerationSpecimen.parse(JSON.parse(generated.text)); } catch { throw new Error('Codex returned an invalid specimen. Please try again.'); }
       update(job, { stage: 'model', message: 'Sculpting and checking the printable solid…' });
       const id = randomUUID();
-      const print = await store.model(id, parsed.anatomy, settings.height);
+      const print = await store.model(id, parsed.anatomy, settings.height, settings.baseplate);
       specimen = { ...parsed, id, settings, print, createdAt: new Date().toISOString(), image: false, demo: false };
       store.save('specimens', id, specimen); update(job, { specimenId: id });
     }

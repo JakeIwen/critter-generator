@@ -51,13 +51,14 @@ available and otherwise the account's returned default. No global Codex configur
    fluorescent color, hypnotic patterning and dreamlike behavior; at 60+ the portrait drops the muted
    natural-history palette. The sliders are defined once in `shared/sliders.mjs`. Older saved specimens
    show only the sliders they were made with.
-3. Set the print height (60–180 mm) and click **Create a critter**.
+3. Set the total print height (60–500 mm), choose whether to **Include baseplate**, and click **Create a critter**.
 4. Codex writes structured field notes and anatomy. The local geometry engine makes a closed solid,
-   and Codex's native image-generation tool paints the portrait. Expect a few minutes.
+   and Codex's native image-generation tool paints the portrait. The loader estimates 130 seconds,
+   shows elapsed and remaining time, and keeps waiting if generation takes longer.
 5. Switch between **Portrait** and **3D print**. Drag the sculpture to rotate; scroll to zoom.
 6. Download the portrait, field notes JSON, **STL**, or editable **OpenSCAD CAD source**.
 7. Open **Collection** to revisit saved creatures. **Use these settings** copies a saved recipe's
-   prompt and slider values into the form for a new variation.
+   prompt, slider values, print height, and baseplate choice into the form for a new variation.
 
 One generation runs at a time. Closing/reloading the page does not cancel it. Cancel explicitly
 with the progress card. If the image step fails, the completed notes and model remain saved;
@@ -127,7 +128,7 @@ interpretation, not a reconstruction of the image.** The model uses rounded body
 head, eyes, horns, antennae, a tail, and dorsal plates. Image generation may vary proportions or details.
 
 The server unions the actual surfaces with Manifold, verifies a single closed boundary, scales to the
-requested height, and exports a flat display base with the creature. The browser previews that exact
+requested height, and optionally includes a flat display base with the creature. The browser previews that exact
 STL geometry. STL has no intrinsic unit metadata; import using **millimeters**.
 The sculpture has one material; STL does not include portrait colors or textures.
 
@@ -136,8 +137,8 @@ enforced in printed millimeters so they hold at every height:
 
 - No horn, antenna or tail segment thinner than 3 mm. The print scale is solved first, then thin
   features are thickened to suit it.
-- A base slab at least 3 mm thick, with a 0.8 mm bottom chamfer against first-layer squish.
-- Tails of 10+ relative units sweep down and rest on the base on a small pad, rather than cantilevering.
+- When enabled, a base slab at least 3 mm thick, with a 0.8 mm bottom chamfer against first-layer squish.
+- Tails of 10+ relative units sweep down onto a small pad, rather than cantilevering.
   The base becomes the hull of its disc and the pad, so the footprint stays compact.
 - The model info reports the thinnest feature, base thickness, the share of surface that overhangs
   more than 45° (support needed), and whether the center of mass sits over the middle of the base.
@@ -150,13 +151,16 @@ geometric design constraints, not a material-strength guarantee. Older saved mod
 remain as generated; the sturdier recipe applies when creating new model files. The bundled
 example's model is regenerated at startup whenever the design version changes.
 
-Open the STL in your preferred slicer. Print upright with the chamfered base on the bed and tree or
+Uncheck **Include baseplate** to export the creature alone; the exported model is grounded at Z=0.
+The chosen height includes the baseplate when enabled. Existing saved models keep their original files.
+
+Open the STL in your preferred slicer. Print upright with the baseplate or feet on the bed and tree or
 organic supports for the belly, chin and eyes. Check those areas in layer preview. Geometry has been validated;
 no physical print or printer-specific slicing has been performed. Material, nozzle size, support
 settings, and print orientation still determine physical results. This app does not emit G-code.
 
 Open `model.scad` in OpenSCAD to modify the primitives or `target_height_mm`. The CAD source uses
-the same primitive recipe but OpenSCAD's sphere tessellation can differ from the exported STL.
+the same faceted sphere geometry, primitive recipe, and bed-contact clipping as the exported STL.
 
 ## Development and verification
 

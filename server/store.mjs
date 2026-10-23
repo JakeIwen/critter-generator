@@ -44,10 +44,10 @@ export class Store {
     if (!['specimens', 'jobs'].includes(kind)) throw new Error('Invalid record type.');
     return this.db.prepare(`SELECT data FROM ${kind} ORDER BY created_at DESC`).all().map(row => JSON.parse(row.data));
   }
-  async model(id, anatomy, height) {
+  async model(id, anatomy, height, baseplate = true) {
     const result = await new Promise((resolve, reject) => {
       const worker = new Worker(new URL('./model-worker.mjs', import.meta.url), {
-        workerData: { anatomy, height }, execArgv: process.execArgv.filter(arg => !arg.startsWith('--input-type')),
+        workerData: { anatomy, height, baseplate }, execArgv: process.execArgv.filter(arg => !arg.startsWith('--input-type')),
       });
       const timer = setTimeout(() => { worker.terminate(); reject(new Error('Model generation timed out.')); }, 60000);
       worker.once('message', result => { clearTimeout(timer); result.error ? reject(new Error(result.error)) : resolve(result); });

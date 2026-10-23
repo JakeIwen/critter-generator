@@ -1,5 +1,6 @@
 import ManifoldModule from 'manifold-3d';
 import { Anatomy } from '../shared/specimen.mjs';
+import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
 
 // Conventions for a sturdy FDM figurine (0.4 mm nozzle, PLA or PETG), in printed
 // millimeters so they hold at every supported print height.
@@ -9,7 +10,7 @@ export const PRINT_RULES = {
   baseChamferMm: 0.8,   // bottom-edge chamfer that absorbs first-layer squish ("elephant's foot")
   overhangDeg: 45,      // faces tilted further than this from vertical need support
 };
-export const DESIGN_VERSION = 'printable-v3';
+export const DESIGN_VERSION = 'printable-v4';
 const BASE_TOP = 3;
 const GROUNDED_TAIL = 10;
 
@@ -25,7 +26,7 @@ export function legProfile(input) {
 
 // mmPerUnit is the print scale; feature minimums depend on it. createModel
 // solves for it, and the default approximates a 60 mm print.
-export function recipe(input, mmPerUnit = 1) {
+export function recipe(input, mmPerUnit = 1, baseplate = true) {
   const a = Anatomy.parse(input), parts = [];
   const minRadius = PRINT_RULES.minFeatureMm / 2 / mmPerUnit * 1.05;
   const thick = r => Math.max(r, minRadius);
@@ -39,7 +40,7 @@ export function recipe(input, mmPerUnit = 1) {
     height: Math.max(BASE_TOP, PRINT_RULES.baseThicknessMm / mmPerUnit) };
   base.discs = [[0, 0, base.radius]];
   base.chamfer = Math.min(base.height / 3, PRINT_RULES.baseChamferMm / mmPerUnit);
-  parts.push(base);
+  if (baseplate) parts.push(base);
   ellipsoid([0, 0, z], [w, l, h]);
   for (let i = 0; i < a.legPairs; i++) {
     const y = a.legPairs === 1 ? 0 : -l * .64 + i * l * 1.28 / (a.legPairs - 1);
@@ -112,7 +113,7 @@ export function recipe(input, mmPerUnit = 1) {
   return parts;
 }
 
-function verticalSpan(parts) {
+function verticalSpan(parts, baseplate) {
   let low = Infinity, high = -Infinity;
   for (const part of parts) {
     const [bottom, top] = part.type === 'base' ? [part.top - part.height, part.top]
@@ -120,15 +121,15 @@ function verticalSpan(parts) {
       : [Math.min(part.p[2] - part.r, part.q[2] - part.s), Math.max(part.p[2] + part.r, part.q[2] + part.s)];
     low = Math.min(low, bottom); high = Math.max(high, top);
   }
-  return high - low;
+  return high - (baseplate ? low : Math.max(BASE_TOP, low));
 }
 
 // Thickening features changes the model's height and so the print scale;
 // a few rounds settle it well within the minimums' 5% margin.
-function printRecipe(anatomy, height) {
-  let mmPerUnit = height / verticalSpan(recipe(anatomy));
-  for (let i = 0; i < 4; i++) mmPerUnit = height / verticalSpan(recipe(anatomy, mmPerUnit));
-  return recipe(anatomy, mmPerUnit);
+function printRecipe(anatomy, height, baseplate) {
+  let mmPerUnit = height / verticalSpan(recipe(anatomy, 1, baseplate), baseplate);
+  for (let i = 0; i < 4; i++) mmPerUnit = height / verticalSpan(recipe(anatomy, mmPerUnit, baseplate), baseplate);
+  return recipe(anatomy, mmPerUnit, baseplate);
 }
 
 // Surface share that faces down more steeply than the overhang limit, ignoring
@@ -151,13 +152,14 @@ function printAnalysis(positions, triangles) {
 }
 
 let modulePromise;
-export async function createModel(anatomy, height = 100) {
-  if (!Number.isFinite(height) || height < 60 || height > 180) throw new Error('Height must be 60–180 mm.');
+export async function createModel(anatomy, height = PRINT_HEIGHT.initial, baseplate = true) {
+  if (!Number.isFinite(height) || height < PRINT_HEIGHT.min || height > PRINT_HEIGHT.max) throw new Error(`Height must be ${PRINT_HEIGHT.min}–${PRINT_HEIGHT.max} mm.`);
   modulePromise ||= ManifoldModule().then(m => { m.setup(); return m; });
   const { Manifold } = await modulePromise;
-  const parts = printRecipe(anatomy, height), owned = [];
+  const parts = printRecipe(anatomy, height, baseplate), owned = [];
   const keep = v => { owned.push(v); return v; };
-  const ball = (p, r) => keep(keep(Manifold.sphere(1, 32)).scale(r)).translate(p);
+  const unitBall = keep(Manifold.sphere(1, 32));
+  const ball = (p, r) => keep(unitBall.scale(r)).translate(p);
   try {
     const solids = parts.map(part => {
       if (part.type === 'base') {
@@ -172,7 +174,9 @@ export async function createModel(anatomy, height = 100) {
       const two = keep(ball(part.q, [part.s, part.s, part.s]));
       return keep(Manifold.hull([one, two]));
     });
-    const union = keep(Manifold.union(solids));
+    const complete = keep(Manifold.union(solids));
+    // Flat feet, belly and tail pads contact the same plane when there is no slab.
+    const union = baseplate ? complete : keep(complete.trimByPlane([0, 0, 1], BASE_TOP));
     if (union.status() !== 'NoError') throw new Error('Solid union failed validation.');
     const components = union.decompose();
     const componentCount = components.length;
@@ -197,12 +201,13 @@ export async function createModel(anatomy, height = 100) {
       info: { designVersion: DESIGN_VERSION, watertight: true, components: componentCount, triangles: scaled.numTri(),
         legShaftDiameterMm: anatomy.legPairs ? mm(legProfile(anatomy).radius * 2) : null,
         minFeatureDiameterMm: links.length ? mm(Math.min(...links.flatMap(p => [p.r, p.s])) * 2) : null,
-        baseThicknessMm: mm(base.height), baseChamferMm: mm(base.chamfer),
-        overhangPct, stable: centerOffset < base.radius * scale * .5, tailRestsOnBase: anatomy.tailLength >= GROUNDED_TAIL,
+        baseplate, baseThicknessMm: base ? mm(base.height) : 0, baseChamferMm: base ? mm(base.chamfer) : 0,
+        overhangPct, stable: base ? centerOffset < base.radius * scale * .5 : null,
+        tailRestsOnBase: baseplate && anatomy.tailLength >= GROUNDED_TAIL,
         dimensions: box.max.map((v, i) => Math.round((v - box.min[i]) * 10) / 10),
         volumeCm3: Math.round(scaled.volume() / 100) / 10, height, units: 'mm',
-        printNote: `Print upright on the chamfered base. Every horn, antenna and tail segment is at least ${PRINT_RULES.minFeatureMm} mm thick${anatomy.tailLength >= GROUNDED_TAIL ? ' and the tail rests on the base' : ''}. About ${Math.round(overhangPct)}% of the surface overhangs more than ${PRINT_RULES.overhangDeg}°: enable tree or organic supports for the belly, chin and eyes. Preview in your slicer; physical results depend on your printer and material.` },
-      scad: scadSource(parts, scale, height),
+        printNote: `${baseplate ? 'Print upright on the chamfered base.' : 'Print upright on the flat contact surfaces. Without a baseplate, check bed adhesion and balance; consider a brim.'} Every horn, antenna and tail segment is at least ${PRINT_RULES.minFeatureMm} mm thick${baseplate && anatomy.tailLength >= GROUNDED_TAIL ? ' and the tail rests on the base' : ''}. About ${Math.round(overhangPct)}% of the surface overhangs more than ${PRINT_RULES.overhangDeg}°: enable tree or organic supports for the belly, chin and eyes. Preview in your slicer; physical results depend on your printer and material.` },
+      scad: scadSource(parts, scale, height, bounds, baseplate, unitBall.getMesh()),
     };
   } finally { for (const solid of owned.reverse()) solid.delete(); }
 }
@@ -224,13 +229,22 @@ export function stlBuffer(model) {
   return buffer;
 }
 
-function scadSource(parts, factor, height) {
+function sphereScad(mesh) {
+  const points = [], faces = [];
+  for (let i = 0; i < mesh.vertProperties.length; i += mesh.numProp) points.push(Array.from(mesh.vertProperties.slice(i, i + 3)));
+  // OpenSCAD polyhedra use clockwise winding when viewed from outside.
+  for (let i = 0; i < mesh.triVerts.length; i += 3) faces.push(Array.from(mesh.triVerts.slice(i, i + 3)).reverse());
+  return `// Shared faceted sphere preserves the STL shape and export bounds.\nmodule unit_ball() {\n  polyhedron(points=${JSON.stringify(points)}, faces=${JSON.stringify(faces)});\n}\n`;
+}
+
+function scadSource(parts, factor, height, bounds, baseplate, sphereMesh) {
   const vector = v => JSON.stringify(v);
-  const ball = (p, r) => `translate(${vector(p)}) scale(${vector(r)}) sphere(r=1);`;
-  return `// Critter Generator: editable CSG source. Units: millimeters.\n// This is the simplified print sculpt, not an image-to-3D reconstruction.\n// Change target_height_mm to resize; edit the primitives below to reshape.\n$fn=48;\ntarget_height_mm=${height};\nscale(${factor} * target_height_mm / ${height}) union() {\n` + parts.map(p => {
+  const ball = (p, r) => `translate(${vector(p)}) scale(${vector(r)}) unit_ball();`;
+  const clip = baseplate ? '' : `\n  // Clip to the same flat contact plane as the STL.\n  translate(${vector(bounds.min)}) cube(${vector(bounds.max.map((v, i) => v - bounds.min[i]))});\n`;
+  return `// Critter Generator: editable CSG source. Units: millimeters.\n// This is the simplified print sculpt, not an image-to-3D reconstruction.\n// Change target_height_mm to resize; edit the primitives below to reshape.\n${sphereScad(sphereMesh)}target_height_mm=${height};\nscale(${factor} * target_height_mm / ${height}) translate([0, 0, ${-bounds.min[2]}]) ${baseplate ? '' : 'intersection() {\n'}union() {\n` + parts.map(p => {
     if (p.type === 'base') return `  // Display base; the bottom chamfer offsets first-layer squish.\n  translate([0, 0, ${p.top - p.height}]) hull() {\n` + p.discs.map(([x, y, r]) =>
       `    translate([${x}, ${y}, 0]) { cylinder(h=${p.chamfer}, r1=${r - p.chamfer}, r2=${r}, $fn=96); translate([0, 0, ${p.chamfer}]) cylinder(h=${p.height - p.chamfer}, r=${r}, $fn=96); }`).join('\n') + '\n  }';
     if (p.type === 'ellipsoid') return `  ${ball(p.p, p.r)}`;
     return `  hull() { ${ball(p.p, [p.r,p.r,p.r])} ${ball(p.q, [p.s,p.s,p.s])} }`;
-  }).join('\n') + '\n}\n';
+  }).join('\n') + '\n}\n' + clip + (baseplate ? '' : '}\n');
 }

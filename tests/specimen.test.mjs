@@ -10,7 +10,7 @@ test('new generation schema prevents tall legs while preserving historical recor
 });
 test('femme and psychedelic are validated, optional for older clients, and reach both prompts', () => {
   const base = { prompt: '', absurdity: 50, deviancy: 10, lethality: 20, height: 100 };
-  assert.deepEqual(Settings.parse(base), { ...base, femme: 0, psychedelic: 0 });
+  assert.deepEqual(Settings.parse(base), { ...base, femme: 0, psychedelic: 0, baseplate: true });
   assert(!Settings.safeParse({ ...base, femme: 101 }).success);
   assert(!Settings.safeParse({ ...base, psychedelic: -1 }).success);
   const settings = Settings.parse({ ...base, femme: 90, psychedelic: 95 });
@@ -18,4 +18,12 @@ test('femme and psychedelic are validated, optional for older clients, and reach
   assert.match(illustrationPrompt({ ...example, settings }), /Femme styling/);
   assert.match(illustrationPrompt({ ...example, settings }), /bold saturated palette/);
   assert.match(illustrationPrompt(example), /restrained natural-history color palette/, 'Saved specimens without settings keep the muted look');
+});
+test('print settings accept 500 mm and optional baseplates with legacy defaults', () => {
+  const base = { absurdity: 50, deviancy: 10, lethality: 20, height: 500 };
+  assert.equal(Settings.parse(base).height, 500);
+  assert.equal(Settings.parse(base).baseplate, true);
+  assert.equal(Settings.parse({ ...base, baseplate: false }).baseplate, false);
+  for (const height of [59, 501, 100.5, Infinity]) assert(!Settings.safeParse({ ...base, height }).success);
+  assert(!Settings.safeParse({ ...base, baseplate: 'false' }).success);
 });

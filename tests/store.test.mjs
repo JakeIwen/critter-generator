@@ -27,3 +27,32 @@ test('SQLite retains creatures and jobs across restart and ignores stale legacy 
     store.db.close();
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
+
+test('model worker persists 500 mm exports without a baseplate and defaults older calls to a baseplate', async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'critter-model-store-'));
+  const store = new Store(root);
+  try {
+    const print = await store.model('no-base', example.anatomy, 500, false);
+    assert.equal(print.height, 500);
+    assert.equal(print.baseplate, false);
+    assert.equal(print.components, 1);
+    const mesh = JSON.parse(readFileSync(store.file('specimens', 'no-base', 'mesh.json'), 'utf8'));
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 2; i < mesh.positions.length; i += 3) {
+      minZ = Math.min(minZ, mesh.positions[i]); maxZ = Math.max(maxZ, mesh.positions[i]);
+    }
+    assert(Math.abs(minZ) < 1e-5);
+    assert(Math.abs(maxZ - 500) < 1e-4);
+    const bytes = readFileSync(store.file('specimens', 'no-base', 'model.stl'));
+    assert.equal(bytes.length, 84 + bytes.readUInt32LE(80) * 50);
+    const cad = readFileSync(store.file('specimens', 'no-base', 'model.scad'), 'utf8');
+    assert.match(cad, /target_height_mm=500/);
+    assert.doesNotMatch(cad, /Display base/);
+    const legacy = await store.model('legacy-base', example.anatomy, 100);
+    assert.equal(legacy.baseplate, true);
+    assert.match(readFileSync(store.file('specimens', 'legacy-base', 'model.scad'), 'utf8'), /Display base/);
+  } finally {
+    store.db.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

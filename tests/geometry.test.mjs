@@ -36,14 +36,21 @@ test('anatomy boundary combinations produce connected printable solids', async (
     const anatomy = {...example.anatomy, bodyLength:i%2?34:18,bodyWidth:i%3?11:22,bodyHeight:i%2?12:24,headSize:i%3?8:16,
       neckLength:i%2?14:0,legPairs:i%5,legLength:i%2?16:0,eyes:1+i%6,horns:i%7,hornLength:i%2?16:4,
       tailLength:i%2?28:0,tailCurl:i%3-1,antennae:i%5,backPlates:i%9,texture:['smooth','ridged','speckled'][i%3]};
-    const height = i%2 ? 60 : 180;
-    const model = await createModel(anatomy,height);
-    assert.equal(model.info.components,1,`Case ${i}`); verifySerializedSolid(stlBuffer(model),height);
-    if (anatomy.legPairs) assert(model.info.legShaftDiameterMm >= 5, `Case ${i}: leg shafts stay at least 5 mm at the smallest supported print size`);
-    if (model.info.minFeatureDiameterMm !== null) assert(model.info.minFeatureDiameterMm >= PRINT_RULES.minFeatureMm, `Case ${i}: no protrusion thinner than ${PRINT_RULES.minFeatureMm} mm`);
-    assert(model.info.baseThicknessMm >= PRINT_RULES.baseThicknessMm, `Case ${i}: base slab thick enough`);
-    assert(model.info.stable, `Case ${i}: center of mass sits over the middle of the base`);
-    assert(model.info.overhangPct >= 0 && model.info.overhangPct < 60, `Case ${i}: overhang share is measured`);
+    const height = i%2 ? 60 : 500;
+    for (const baseplate of [true, false]) {
+      const model = await createModel(anatomy,height,baseplate);
+      assert.equal(model.info.components,1,`Case ${i}, baseplate ${baseplate}`); verifySerializedSolid(stlBuffer(model),height);
+      if (anatomy.legPairs) assert(model.info.legShaftDiameterMm >= 5, `Case ${i}: leg shafts stay at least 5 mm at the smallest supported print size`);
+      if (model.info.minFeatureDiameterMm !== null) assert(model.info.minFeatureDiameterMm >= PRINT_RULES.minFeatureMm, `Case ${i}: no protrusion thinner than ${PRINT_RULES.minFeatureMm} mm`);
+      if (baseplate) {
+        assert(model.info.baseThicknessMm >= PRINT_RULES.baseThicknessMm, `Case ${i}: base slab thick enough`);
+        assert(model.info.stable, `Case ${i}: center of mass sits over the middle of the base`);
+      } else {
+        assert.equal(model.info.baseThicknessMm, 0);
+        assert.equal(model.info.stable, null, 'Free-standing balance is not certified by the baseplate check');
+      }
+      assert(model.info.overhangPct >= 0 && model.info.overhangPct < 60, `Case ${i}: overhang share is measured`);
+    }
   }
 });
 test('legacy tall-leg inputs produce a low stance with stout load-bearing segments', () => {
@@ -83,5 +90,59 @@ test('long tails rest on the base instead of cantilevering', async () => {
 test('invalid geometry cannot create unbounded or non-finite meshes', async () => {
   assert.equal(Anatomy.safeParse({...example.anatomy,bodyLength:Infinity}).success,false);
   await assert.rejects(createModel(example.anatomy,0));
+  await assert.rejects(createModel(example.anatomy,501), /60–500/);
+  await assert.rejects(createModel(example.anatomy,501,false), /60–500/);
   await assert.rejects(createModel({...example.anatomy,legPairs:10000}));
+});
+
+// Read the exported CSG's geometry instead of relying on implementation parts.
+// Hulls and unions preserve the bounds of their constituent spheres.
+function scadContactBounds(source) {
+  const points = JSON.parse(source.match(/polyhedron\(points=(.*), faces=/)[1]);
+  const sphereMin = [0, 1, 2].map(axis => Math.min(...points.map(p => p[axis])));
+  const sphereMax = [0, 1, 2].map(axis => Math.max(...points.map(p => p[axis])));
+  const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];
+  for (const match of source.matchAll(/translate\((\[[^\]]+\])\) scale\((\[[^\]]+\])\) unit_ball\(\);/g)) {
+    const position = JSON.parse(match[1]), radii = JSON.parse(match[2]);
+    for (let axis = 0; axis < 3; axis++) {
+      low[axis] = Math.min(low[axis], position[axis] + radii[axis] * sphereMin[axis]);
+      high[axis] = Math.max(high[axis], position[axis] + radii[axis] * sphereMax[axis]);
+    }
+  }
+  const clip = source.match(/translate\((\[[^\]]+\])\) cube\((\[[^\]]+\])\);/);
+  const origin = JSON.parse(clip[1]), size = JSON.parse(clip[2]);
+  const transform = source.match(/scale\(([\d.e+-]+) \* target_height_mm \/ \d+\) translate\(\[0, 0, ([\d.e+-]+)\]\)/);
+  const factor = Number(transform[1]), shift = Number(transform[2]);
+  return [low, high].map((bound, side) => bound.map((value, axis) => {
+    const clipped = side ? Math.min(value, origin[axis] + size[axis]) : Math.max(value, origin[axis]);
+    return (clipped + (axis === 2 ? shift : 0)) * factor;
+  }));
+}
+
+test('optional baseplate changes the exported solid and preserves grounded SCAD bounds', async () => {
+  const anatomy = {...example.anatomy, tailLength:28, tailCurl:1};
+  const based = await createModel(anatomy,100);
+  assert.equal(based.info.baseplate, true, 'Omitted option retains the baseplate');
+  assert(recipe(anatomy).some(p => p.type === 'base'));
+  assert(!recipe(anatomy,1,false).some(p => p.type === 'base'));
+  for (const height of [60,500]) {
+    const model = await createModel(anatomy,height,false);
+    assert.equal(model.info.baseplate, false);
+    assert.equal(model.info.baseChamferMm, 0);
+    assert.equal(model.info.tailRestsOnBase, false);
+    assert.match(model.info.printNote, /Without a baseplate/);
+    assert.doesNotMatch(model.scad, /Display base/);
+    const bounds = scadContactBounds(model.scad);
+    for (let axis = 0; axis < 3; axis++) {
+      const values = model.positions.filter((_, index) => index % 3 === axis);
+      assert(Math.abs(bounds[0][axis] - Math.min(...values)) < 1e-4);
+      assert(Math.abs(bounds[1][axis] - Math.max(...values)) < 1e-4);
+    }
+    assert(Math.abs(bounds[0][2]) < 1e-5);
+    assert(Math.abs(bounds[1][2] - height) < 1e-4);
+    const bedPoints = model.positions.filter((value, index) => index % 3 === 2 && Math.abs(value) < 1e-5);
+    assert(bedPoints.length > 3, 'Clipped feet and tail have flat bed contacts');
+  }
+  const plain = await createModel(anatomy,100,false);
+  assert(plain.info.volumeCm3 < based.info.volumeCm3, 'STL volume loses the slab');
 });
