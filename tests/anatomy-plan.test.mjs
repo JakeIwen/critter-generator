@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import { createAnatomyPlan, plannedDesign } from '../shared/anatomy-plan.mjs';
 import { bodyPlans } from '../shared/body-plans.mjs';
 import { Anatomy, example, GenerationSpecimen, Settings, illustrationPrompt } from '../shared/specimen.mjs';
+import { animalTypes, animalTypeIds } from '../shared/animal-types.mjs';
+import { viewpoints, encounters } from '../shared/encounter-directions.mjs';
 
 const settings = Settings.parse({ absurdity: 65, deviancy: 35, lethality: 70, height: 100 });
-const specimenFor = plan => ({ ...example, anatomy: { ...example.anatomy, ...plan.anatomy }, variation: plan });
+const specimenFor = plan => ({ ...example, anatomy: plan.anatomy ? { ...example.anatomy, ...plan.anatomy } : null,
+  biology: { ...example.biology, legCount: plan.anatomy ? plan.anatomy.legPairs * 2 : 0 }, variation: plan });
 
 test('anatomy plans replay from seed and recent history, independently of print size and colors', () => {
   const first = createAnatomyPlan(settings, 'seed-one');
@@ -58,7 +61,7 @@ test('default design output must keep the sampled anatomy and prose and portrait
     assert.deepEqual(request.schema.properties.anatomy.properties[key].enum, [value]);
   }
   assert.throws(() => request.parse({ ...example, anatomy: { ...specimen.anatomy, eyes: specimen.anatomy.eyes === 1 ? 2 : 1 } }));
-  assert(request.parse({ ...example, anatomy: { ...specimen.anatomy, color: '#123456' } }));
+  assert(request.parse({ ...specimenWithoutMetadata(specimen), anatomy: { ...specimen.anatomy, color: '#123456' } }));
   assert(request.prompt.includes(JSON.stringify(plan.anatomy)));
   assert(illustrationPrompt(specimen).includes(JSON.stringify(specimen.anatomy)));
 });
@@ -71,7 +74,63 @@ test('explicit physical preferences can override the roll within safe geometry l
   const request = plannedDesign(custom, plan);
   const anatomy = { ...Anatomy.parse(example.anatomy), legLength: 3, legPairs: 2, eyes: 2,
     horns: 0, tailLength: 0, headWidth: 1.4, headHeight: .65 };
-  assert.deepEqual(request.parse({ ...example, anatomy }).anatomy, anatomy);
+  assert.deepEqual(request.parse({ ...example, anatomy, biology: { ...example.biology, legCount: 4 } }).anatomy, anatomy);
   assert.equal(request.schema.properties.anatomy.properties.legPairs.enum, undefined);
   assert.throws(() => request.parse({ ...example, anatomy: { ...anatomy, legLength: 16 } }));
+});
+
+test('default inspiration pool covers the animal kingdom and persists varied camera encounters', () => {
+  const history = [], groups = new Set(), angles = new Set(), activities = new Set();
+  for (let index = 0; index < 120; index++) {
+    const plan = createAnatomyPlan({ ...settings, printModel: false }, `kingdom-${index}`, history);
+    assert.equal(plan.anatomy, null); assert.equal(plan.family, null);
+    assert(plan.inspirationIds.length >= 1 && plan.inspirationIds.length <= 3);
+    assert.equal(new Set(plan.inspirationIds).size, plan.inspirationIds.length);
+    assert(plan.inspirationIds.some(id => !animalTypes.find(type => type.id === id).fictional));
+    for (const id of plan.inspirationIds) groups.add(id);
+    angles.add(plan.portrait.viewpoint); activities.add(plan.portrait.encounter);
+    history.unshift(specimenFor(plan));
+  }
+  assert.deepEqual([...groups].sort(), [...animalTypeIds].sort());
+  assert.deepEqual([...angles].sort(), Object.keys(viewpoints).sort());
+  assert.deepEqual([...activities].sort(), Object.keys(encounters).sort());
+});
+
+test('selected animal chips limit the inspiration pool, including single and fictional-only choices', () => {
+  for (const selected of [['birds'], ['fish', 'cephalopods'], ['sky-drifters', 'dream-mimics']]) {
+    for (let index = 0; index < 20; index++) {
+      const plan = createAnatomyPlan({ ...settings, animalTypes: selected }, `selection-${index}`);
+      assert(plan.inspirationIds.every(id => selected.includes(id)));
+      if (selected.length === 1) assert.deepEqual(plan.inspirationIds, selected);
+    }
+  }
+  for (const id of ['fish', 'cephalopods', 'snails', 'worms', 'sponges', 'jellyfish']) {
+    assert.equal(createAnatomyPlan({ ...settings, animalTypes: [id] }, id).anatomy.legPairs, 0);
+  }
+});
+
+test('No legs is enforced for both modes even when free text requests conflicting legs', () => {
+  for (const printModel of [true, false]) {
+    const custom = { ...settings, printModel, legless: true, animalTypes: ['birds'], prompt: 'Give it four legs.' };
+    const plan = createAnatomyPlan(custom, 'no-legs');
+    const design = plannedDesign(custom, plan);
+    const record = specimenWithoutMetadata(specimenFor(plan));
+    assert.equal(design.parse(record).biology.legCount, 0);
+    assert.throws(() => design.parse({ ...record, biology: { ...record.biology, legCount: 4 } }));
+    if (printModel) {
+      assert.equal(plan.anatomy.legPairs, 0); assert.equal(plan.anatomy.legLength, 0);
+      assert.throws(() => design.parse({ ...record, anatomy: { ...record.anatomy, legPairs: 2 } }));
+    }
+  }
+});
+
+test('unrestricted biology can have forms and counts the simplified sculpt cannot express', () => {
+  const custom = { ...settings, printModel: false, animalTypes: ['worms'] };
+  const plan = createAnatomyPlan(custom, 'many-appendages');
+  const design = plannedDesign(custom, plan);
+  const record = { ...example, anatomy: null, biology: { ...example.biology,
+    bodyPlan: 'A translucent branching colony with repeated swimming bells and a thousand articulated limbs.', legCount: 1000 } };
+  assert.deepEqual(design.parse(record), record);
+  assert.throws(() => design.parse({ ...record, anatomy: Anatomy.parse(example.anatomy) }));
+  assert.equal(design.schema.properties.anatomy.type, 'null');
 });

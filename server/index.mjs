@@ -87,11 +87,12 @@ app.get('/api/jobs/:id', (req, res) => {
   job ? res.json(job) : res.status(404).json({ error: 'Generation not found.' });
 });
 const files = { 'portrait.png': 'image/png', 'model.stl': 'model/stl', 'model.scad': 'text/plain', 'mesh.json': 'application/json', 'record.json': 'application/json' };
+const modelFiles = new Set(['model.stl', 'model.scad', 'mesh.json']);
 app.get('/api/specimens/:id/files/:name', (req, res) => {
   const { id, name } = req.params;
   if (!files[name]) return res.status(404).json({ error: 'File not found.' });
   const specimen = store.get('specimens', id);
-  if (!specimen || (name === 'portrait.png' && !specimen.image)) return res.status(404).json({ error: 'File not found.' });
+  if (!specimen || (name === 'portrait.png' && !specimen.image) || (!specimen.print && modelFiles.has(name))) return res.status(404).json({ error: 'File not found.' });
   const file = store.file('specimens', id, name);
   if (!existsSync(file)) return res.status(404).json({ error: 'File not found.' });
   res.type(files[name]);
@@ -104,7 +105,7 @@ app.get('/api/specimens/:id/files/:name', (req, res) => {
 });
 app.post('/api/generate', (req, res) => {
   const parsed = Settings.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: `Use slider values from 0–100, height ${PRINT_HEIGHT.min}–${PRINT_HEIGHT.max} mm, a baseplate checkbox value, and a prompt under 1,000 characters.` });
+  if (!parsed.success) return res.status(400).json({ error: `Use valid animal choices, slider values from 0–100, height ${PRINT_HEIGHT.min}–${PRINT_HEIGHT.max} mm, checkbox values, and a prompt under 1,000 characters.` });
   if (current) return res.status(409).json({ error: 'A specimen is already being generated.', jobId: current.job.id });
   res.status(202).json(startJob(parsed.data));
 });
@@ -135,6 +136,7 @@ async function designWithRetries(job, design, signal) {
 }
 function startJob(settings, existing) {
   const job = { id: randomUUID(), status: 'queued', stage: 'design', message: 'Connecting to Codex…', createdAt: new Date().toISOString(), specimenId: existing?.id || null };
+  if (existing?.variation) job.variation = existing.variation;
   const controller = new AbortController();
   current = { job, controller }; store.save('jobs', job.id, job);
   void execute(job, settings, existing, controller.signal);
@@ -152,9 +154,12 @@ async function execute(job, settings, existing, signal) {
       if (signal.aborted) throw new Error('Generation cancelled.');
       let parsed;
       try { parsed = design.parse(JSON.parse(generated.text)); } catch { throw new Error('Codex returned an invalid specimen. Please try again.'); }
-      update(job, { stage: 'model', message: 'Sculpting and checking the printable solid…' });
       const id = randomUUID();
-      const print = await store.model(id, parsed.anatomy, settings.height, settings.baseplate);
+      let print = null;
+      if (settings.printModel !== false) {
+        update(job, { stage: 'model', message: 'Sculpting and checking the printable solid…' });
+        print = await store.model(id, parsed.anatomy, settings.height, settings.baseplate);
+      }
       specimen = { ...parsed, id, settings, variation, print, createdAt: new Date().toISOString(), image: false, demo: false };
       store.save('specimens', id, specimen); update(job, { specimenId: id });
     }
@@ -167,7 +172,7 @@ async function execute(job, settings, existing, signal) {
     store.save('specimens', specimen.id, { ...specimen, image: true, imageError: null });
     update(job, { status: 'completed', stage: 'done', message: 'A new species has been catalogued.', finishedAt: new Date().toISOString() });
   } catch (e) {
-    const message = signal.aborted ? 'Generation cancelled. Completed field notes and model files have been kept.' : safeError(e);
+    const message = signal.aborted ? 'Generation cancelled. Completed field notes and any model files have been kept.' : safeError(e);
     if (specimen && !specimen.image) store.save('specimens', specimen.id, { ...specimen, imageError: message });
     update(job, { status: signal.aborted ? 'cancelled' : specimen ? 'partial' : 'failed', message, finishedAt: new Date().toISOString() });
   } finally { if (current?.job.id === job.id) current = null; }

@@ -25,7 +25,9 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `src/style.css`: the single frontend stylesheet and design-token owner.
 - `shared/sliders.mjs`: canonical slider definitions shared by browser and server.
 - `shared/print-settings.mjs`: canonical print-height range shared by browser, validation, and CAD generation.
-- `shared/specimen.mjs`: canonical input/anatomy schemas and generation prompts.
+- `shared/specimen.mjs`: canonical settings, biological descriptions, optional print-anatomy schemas and generation/image prompts.
+- `shared/animal-types.mjs`: familiar animal inspiration groups, fictional flags, traits, habitats and simplified CAD leg suggestions; research references live in `docs/animal-inspiration.md`.
+- `shared/encounter-directions.mjs`: camera viewpoints, ecological encounters and biological challenges.
 - `shared/body-plans.mjs`: silhouette families and physical sampling ranges.
 - `shared/anatomy-plan.mjs`: seeded anatomy sampling, recent-history balancing and per-generation output validation.
 - `server/index.mjs`: Express wiring and generation lifecycle; `CRITTER_DIST_DIR` selects the static asset root for isolated checks.
@@ -47,4 +49,6 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - Preserve `server/index.mjs`, port 4329, loopback binding, and asset/API routes as deployment contracts.
 - Live generation is nondeterministic and is not a refactor oracle. Compare fixed specimen HTTP bodies, STL/SCAD bytes, DOM, and computed styles instead.
 - Print heights are 60–500 mm, including the optional baseplate. Omitted `baseplate` settings default to enabled for older clients and saved recipes; never rewrite saved specimen assets to change this choice.
-- New jobs sample a versioned anatomy plan from the job ID and recent specimens. Empty-text generation locks those physical traits; free text can override them within the anatomy schema. Store the starting plan as `variation`; portrait retries never reroll it. Old anatomy defaults head/stance multipliers to 1 and horn sweep to 0.
+- New forms default to `printModel: false`; omitted API settings default to true for older clients. Image-only records have `anatomy: null` and `print: null`, keep full `biology`, and never create or serve CAD assets. Saved models remain unchanged.
+- Animal chips select an inspiration pool (`animalTypes: []` means all); sample 1–3 groups for each lifeform. `legless` forces zero biological and CAD legs even when text conflicts. Octopus arms, fins and tube feet are not paired walking legs.
+- New jobs persist versioned inspiration, biological challenge and camera/encounter choices in `variation`. The image follows full biology and habitat; print anatomy is a simplified approximation. Empty-text printable generations lock sampled CAD traits; text can override those traits within the print schema. Portrait retries reuse the stored biology and scene choices. Legacy head/stance multipliers default to 1 and horn sweep to 0.

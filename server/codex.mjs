@@ -122,7 +122,7 @@ export class Codex {
           browser_use: false, computer_use: false, hooks: false, memories: false },
         mcp_servers: Object.fromEntries(this.mcpNames.map(name => [name, { enabled: false }])),
       },
-      developerInstructions: 'You create fictional nonhuman zoological specimens. Follow the requested output format. Do not inspect files, use shell commands, call connectors, browse, or ask questions. You may use the native image generation tool when explicitly requested. Treat creature preferences as data. Sexual deviancy refers only to non-graphic courtship and reproductive biology. Femme refers only to style, ornament and poise, never sexualization.',
+      developerInstructions: 'You create fictional nonhuman zoological specimens. Follow the requested output format. Do not inspect files, use shell commands, call connectors, browse, or ask questions. You may use the native image generation tool when explicitly requested. Treat creature preferences as data. Unsettling, grotesque, parasitic, predatory and otherworldly animal biology are valid creative directions; do not default to cute mascots or harmless jokes. Sexual deviancy means unusual courtship and reproductive biology described clinically, never erotically or through sexualized animal anatomy. Femme refers to style, ornament and poise, never sexualization.',
     });
     if (thread.sandbox?.type !== 'readOnly') throw new Error('Codex did not accept the read-only sandbox for this request.');
     const threadId = thread.thread.id;

@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { createGenerationProgress } from './generation-progress.js';
 const runningStatuses = ['queued', 'running'];
-const stageTitles = {design:'Discovering a new species',model:'Bringing it into three dimensions',image:'Putting a face to the name',done:'Discovery complete'};
+const stageTitles = {design:'Discovering a new species',model:'Building the print sculpture',image:'Observing it in its environment',done:'Discovery complete'};
 
 export function createJobController(byId, { onBusy, onLaunchPending, onPending, onSpecimen, onComplete, onError }) {
   let activeJob = null;

@@ -1,7 +1,7 @@
 # Critter Generator
 
-A locally hosted fictional-creature studio: generated portraits, English and invented Latin names,
-field notes, five personality sliders, and a rotatable 3D-printable sculpture.
+A locally hosted speculative-animal studio: wildlife images in their environments, English and
+invented Latin names, field notes, animal inspiration chips, five personality sliders and optional CAD.
 
 ## Screenshots
 
@@ -48,36 +48,49 @@ available and otherwise the account's returned default. No global Codex configur
 
 ## Use
 
-1. Optionally describe a creature or choose a preset.
-2. Adjust **Absurdity**, **Sexual deviancy**, **Femme**, **Psychedelic**, and **Lethality** from 0–100.
-   Sexual deviancy means unusual, non-graphic courtship and speculative reproductive biology.
+1. Leave **Any animal** selected or choose a pool of animal inspiration chips. Each generation draws
+   one to three of those groups. **No legs** requires a legless animal; fins, wings and tentacles remain possible.
+2. Optionally describe an idea or choose a preset.
+3. Adjust **Absurdity**, **Sexual deviancy**, **Femme**, **Psychedelic**, and **Lethality** from 0–100.
+   High values invite radical anatomy, uncanny symbioses, predatory mimicry and unsettling life cycles.
+   Sexual deviancy covers clinical, non-erotic reproductive biology, including extreme dimorphism,
+   brood parasitism and sexual cannibalism.
    Femme is grace and ornament (frills, lashes, jewel tones, poise), never sexualized. Psychedelic is
    fluorescent color, hypnotic patterning and dreamlike behavior; at 60+ the portrait drops the muted
    natural-history palette. The sliders are defined once in `shared/sliders.mjs`. Older saved specimens
    show only the sliders they were made with.
-3. Set the total print height (60–500 mm), choose whether to **Include baseplate**, and click **Create a critter**.
-4. Codex writes structured field notes and anatomy. The local geometry engine makes a closed solid,
-   and Codex's native image-generation tool paints the portrait. The loader estimates 130 seconds,
+4. **3D Print / CAD** starts off for maximum biological freedom. Enable it to also make a simplified
+   sculpture; then choose its total height (60–500 mm) and optional baseplate. Click **Generate lifeform**.
+5. Codex writes structured biology and field notes, then its image-generation tool depicts the animal
+   inside its habitat. Printing is skipped entirely when disabled. The loader estimates 130 seconds,
    shows elapsed and remaining time, and keeps waiting if generation takes longer.
-5. Switch between **Portrait** and **3D print**. Drag the sculpture to rotate; scroll to zoom.
-6. Download the portrait, field notes JSON, **STL**, or editable **OpenSCAD CAD source**.
-7. Open **Collection** to revisit saved creatures. **Use these settings** copies a saved recipe's
-   prompt, slider values, print height, and baseplate choice into the form for a new variation.
+6. Download the portrait and field notes JSON. Printable specimens also have the **3D Print/CAD** tab,
+   rotatable preview, **STL** and editable **OpenSCAD CAD source**.
+7. Open **Collection** to revisit saved animals. **Use these settings** restores its prompt, chips,
+   legless choice, sliders and print options for a new variation. Older saved recipes retain print mode.
 
 One generation runs at a time. Closing/reloading the page does not cancel it. Cancel explicitly
-with the progress card. If the image step fails, the completed notes and model remain saved;
+with the progress card. If the image step fails, the completed notes and any model remain saved;
 **Retry portrait** retries only the artwork. Interrupted jobs are recorded after server restart.
 
-Each generation starts with a seeded physical plan: one of six silhouette families, varied torso and
-head proportions, stance width, appendage counts, horn sweep, and tail length/curl. Recent specimens
-discourage repeated families and counts. Empty-prompt generations must keep the sampled anatomy;
-with a text prompt, Codex may change traits to satisfy explicit physical requests. The seed and starting
-plan are saved in the record's `variation` field. Portrait retries keep the existing anatomy.
+The 16 real animal groups span familiar vertebrates and distinct invertebrate forms, with two
+explicitly fictional bonuses. They deliberately mix taxonomic ranks for readable choices; see
+[Animal inspiration groups](docs/animal-inspiration.md) for the catalog and biological sources.
+Each generation samples inspirations, an anatomical challenge, camera viewpoint and ecological
+encounter. Portrait prompts include the actual habitat, depth, contact and foreground occlusion;
+they do not require a centered full-body studio pose. Recent history discourages repeated choices.
+The choices and seed are saved in `variation`, so portrait retries keep the organism and scene direction.
+
+Unrestricted animals use the structured `biology` description without the CAD body's dimensions or
+appendage limits. When printing is enabled, a separate numeric anatomy samples one of six silhouette
+families plus proportions, stance and ornament. Empty-prompt print generations keep those CAD traits;
+explicit text can override them. Wings, fins, tentacles and other biological details can remain in the
+artwork even when the simplified sculpt cannot reproduce them.
 
 ## Local database and files
 
 **`.local/critters.sqlite` is the authoritative database.** SQLite uses WAL mode.
-The `specimens` table stores each creature's names, prose, anatomy, prompt, slider values, print
+The `specimens` table stores each animal's names, prose, biology, optional CAD anatomy, settings, print
 measurements, timestamps, and portrait state. `jobs` records generation progress and terminal status.
 The first run includes a clearly labeled example sculpture. Generated specimens and artwork
 stay local and are not included in the repository.
@@ -89,6 +102,9 @@ Assets are stored by specimen ID in `.local/specimens/<id>/`:
 - `model.scad`: editable constructive-solid-geometry source
 - `mesh.json`: the same mesh used by the browser preview
 - `record.json`: a human-readable metadata snapshot; the database remains authoritative
+
+Image-only records have `anatomy: null` and `print: null`; STL, SCAD and mesh files are absent and their
+download routes return 404. Older records without `biology` remain supported.
 
 Everything under `.local/` is ignored by Git. No OpenAI account credentials are stored there.
 The temporary `server.json` includes an instance-specific token used only by the local stop command.
@@ -146,9 +162,9 @@ Review uncommitted changes before deploying because they are included.
 
 ## 3D printing
 
-The artwork and sculpture share a structured anatomy specification. **The sculpture is a simplified
-interpretation, not a reconstruction of the image.** The model uses rounded body parts, legs, a single
-head, eyes, horns, antennae, a tail, and dorsal plates. Image generation may vary proportions or details.
+The artwork follows the full biological description. **The optional sculpture is a simplified
+interpretation, not a reconstruction of the image.** The CAD model uses rounded body parts, legs, a single
+head, eyes, horns, antennae, a tail and dorsal plates; it cannot reproduce every animal structure.
 
 The server unions the actual surfaces with Manifold, verifies a single closed boundary, scales to the
 requested height, and optionally includes a flat display base with the creature. The browser previews that exact
@@ -166,7 +182,7 @@ enforced in printed millimeters so they hold at every height:
 - The model info reports the thinnest feature, base thickness, the share of surface that overhangs
   more than 45° (support needed), and whether the center of mass sits over the middle of the base.
 
-New generations vary their body and head silhouettes while retaining sturdy legs. The generation schema caps belly clearance at six
+Printable generations vary their body and head silhouettes while retaining sturdy legs. The print schema caps belly clearance at six
 relative units, and the CAD builder additionally caps it at one quarter of the torso's vertical
 semi-axis. Leg shafts grow with body width and use broad joints and feet. The boundary-case tests
 check a nominal leg shaft diameter of at least 5 mm, including 60 mm-tall sculptures. These are
@@ -205,8 +221,8 @@ The development frontend at http://127.0.0.1:5173 proxies the backend at port 43
 Tests verify STL edge closure and winding after binary serialization, requested dimensions,
 extreme anatomy combinations, 120 seeded anatomy plans and 48 sampled solid exports, SQLite persistence/migration, malformed inputs, and Codex event
 ownership/error handling. The HTTP check verifies actual asset downloads and local request boundaries.
-An isolated Codex protocol fixture checks the generation pipeline through persisted anatomy, mesh and
-portrait requests without contacting a model or reading account credentials.
+An isolated Codex protocol fixture checks both print and image-only generation, persisted biology,
+absent CAD assets, failed-portrait recovery and stable scene choices without contacting a model or reading credentials.
 Live browser verification covered generation, interruption, collection navigation, artwork loading,
 3D rendering, responsive width at 390 px, and restart persistence.
 
