@@ -6,6 +6,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { Settings, illustrationPrompt, example } from '../shared/specimen.mjs';
 import { createAnatomyPlan, plannedDesign } from '../shared/anatomy-plan.mjs';
 import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
+import { JOB_KINDS, completedGenerationDuration } from '../shared/generation-timing.mjs';
 import { Codex, imageBytes, safeError } from './codex.mjs';
 import { Store } from './store.mjs';
 import { DESIGN_VERSION } from './geometry.mjs';
@@ -73,13 +74,14 @@ if (!exampleRecord.image && existsSync(examplePortrait)) {
   store.save('specimens', 'example-lantern', { ...exampleRecord, image: true, imageError: null });
 }
 
-app.get('/api/status', (_req, res) => res.json({ ...codex.state, activeJob: current?.job.id || null }));
+const connectionStatus = () => ({ ...codex.state, activeJob: current?.job.id || null, generationTiming: store.generationTiming() });
+app.get('/api/status', (_req, res) => res.json(connectionStatus()));
 app.post('/api/shutdown', (req, res) => {
   if (req.headers['x-critter-stop-token'] !== stopToken) return res.status(403).json({ error: 'Invalid instance token.' });
   res.json({ stopped: true }); setTimeout(shutdown, 50);
 });
 app.post('/api/connect', async (_req, res) => {
-  try { res.json(await codex.connect()); } catch (e) { res.status(503).json({ error: safeError(e) }); }
+  try { await codex.connect(); res.json(connectionStatus()); } catch (e) { res.status(503).json({ error: safeError(e) }); }
 });
 app.get('/api/specimens', (_req, res) => res.json(store.list('specimens')));
 app.get('/api/jobs/:id', (req, res) => {
@@ -121,7 +123,12 @@ app.post('/api/jobs/:id/cancel', (req, res) => {
   current.controller.abort(); update(current.job, { message: 'Cancelling…' }); res.json({ ok: true });
 });
 
-function update(job, data) { Object.assign(job, data); store.save('jobs', job.id, job); }
+function update(job, data) {
+  Object.assign(job, data);
+  const durationMs = completedGenerationDuration(job);
+  if (durationMs !== null) job.durationMs = durationMs;
+  store.save('jobs', job.id, job);
+}
 const DESIGN_ATTEMPTS = 3;
 async function designWithRetries(job, design, signal) {
   for (let attempt = 1; ; attempt++) {
@@ -135,12 +142,13 @@ async function designWithRetries(job, design, signal) {
   }
 }
 function startJob(settings, existing) {
-  const job = { id: randomUUID(), status: 'queued', stage: 'design', message: 'Connecting to Codex…', createdAt: new Date().toISOString(), specimenId: existing?.id || null };
+  const job = { id: randomUUID(), status: 'queued', stage: 'design', message: 'Connecting to Codex…', createdAt: new Date().toISOString(), specimenId: existing?.id || null,
+    kind: existing ? JOB_KINDS.PORTRAIT : JOB_KINDS.GENERATION, estimatedDurationMs: store.generationTiming().estimatedDurationMs };
   if (existing?.variation) job.variation = existing.variation;
   const controller = new AbortController();
   current = { job, controller }; store.save('jobs', job.id, job);
   void execute(job, settings, existing, controller.signal);
-  return { jobId: job.id };
+  return { jobId: job.id, estimatedDurationMs: job.estimatedDurationMs };
 }
 async function execute(job, settings, existing, signal) {
   let specimen = existing;

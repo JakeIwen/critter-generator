@@ -18,7 +18,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `src/studio.js`: thin browser feature wiring and page navigation.
 - `src/template.js`, `src/icons.js`, and `src/presets.js`: application markup, SVG icons, and generator presets.
 - `src/generation-form.js` and `src/generation-jobs.js`: generator inputs and job lifecycle.
-- `src/generation-progress.js`: 130-second generation estimate, elapsed/remaining display, and timer recovery.
+- `src/generation-progress.js`: progress against the job's frozen estimate, stable estimated-total display, and timer recovery.
 - `src/specimen-view.js`, `src/collection.js`, and `src/specimen-format.js`: specimen stage, collection rendering, and shared specimen display formatting.
 - `src/api.js` and `src/connection.js`: shared browser API and Codex connection status boundaries.
 - `src/viewer.js`: Three.js specimen viewer.
@@ -27,7 +27,8 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `shared/print-settings.mjs`: canonical print-height range shared by browser, validation, and CAD generation.
 - `shared/specimen.mjs`: canonical settings, biological descriptions, optional print-anatomy schemas and generation/image prompts.
 - `shared/animal-types.mjs`: familiar animal inspiration groups, fictional flags, traits, habitats and simplified CAD leg suggestions; research references live in `docs/animal-inspiration.md`.
-- `shared/encounter-directions.mjs`: camera viewpoints, ecological encounters and biological challenges.
+- `shared/encounter-directions.mjs`: camera viewpoints, ecological encounters, occluding compositions, biological silhouettes and challenges.
+- `shared/generation-timing.mjs`: canonical job kinds, successful-generation timing rules, last-ten averaging and initial estimate.
 - `shared/body-plans.mjs`: silhouette families and physical sampling ranges.
 - `shared/anatomy-plan.mjs`: seeded anatomy sampling, recent-history balancing and per-generation output validation.
 - `server/index.mjs`: Express wiring and generation lifecycle; `CRITTER_DIST_DIR` selects the static asset root for isolated checks.
@@ -52,3 +53,5 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - New forms default to `printModel: false`; omitted API settings default to true for older clients. Image-only records have `anatomy: null` and `print: null`, keep full `biology`, and never create or serve CAD assets. Saved models remain unchanged.
 - Animal chips select an inspiration pool (`animalTypes: []` means all); sample 1–3 groups for each lifeform. `legless` forces zero biological and CAD legs even when text conflicts. Octopus arms, fins and tube feet are not paired walking legs.
 - New jobs persist versioned inspiration, biological challenge and camera/encounter choices in `variation`. The image follows full biology and habitat; print anatomy is a simplified approximation. Empty-text printable generations lock sampled CAD traits; text can override those traits within the print schema. Portrait retries reuse the stored biology and scene choices. Legacy head/stance multipliers default to 1 and horn sweep to 0.
+- Image requests use habitat, diet, field observation, courtship and danger to build visible surrounding scenes. Biological images receive no numeric CAD proportions. New plans persist composition and biological silhouette choices and do not immediately repeat the previous camera viewpoint.
+- `app_metadata` stores the last-ten successful full-generation timing aggregate, rebuilt from durable jobs on startup. Legacy completed jobs with a design thread count; failed/partial/interrupted/cancelled jobs and portrait retries do not. Each new job freezes the preceding estimate in `estimatedDurationMs`; successful full jobs record `durationMs`. Status/connect expose `generationTiming`. Until samples exist, the shared fallback is 130 seconds; never let tests learn from real generation data.

@@ -2,10 +2,10 @@ import { z } from 'zod';
 import { Biology, GenerationAnatomy, GenerationSpecimen, creaturePrompt } from './specimen.mjs';
 import { bodyPlans, shapeRanges } from './body-plans.mjs';
 import { animalTypes, animalTypeById } from './animal-types.mjs';
-import { viewpoints, encounters, biologicalChallenges } from './encounter-directions.mjs';
+import { viewpoints, encounters, compositions, biologicalSilhouettes, biologicalChallenges } from './encounter-directions.mjs';
 
 const HISTORY_SIZE = 18;
-export const ANATOMY_PLAN_VERSION = 2;
+export const ANATOMY_PLAN_VERSION = 3;
 
 function seededRandom(seed) {
   let state = 2166136261;
@@ -77,15 +77,19 @@ export function createAnatomyPlan(settings, seed, specimens = []) {
   const random = seededRandom(seed);
   const recent = specimens.filter(item => !item.demo).slice(0, HISTORY_SIZE);
   const inspirationIds = selectInspirations(settings, recent, random);
+  const previousView = recent.find(item => item.variation?.portrait?.viewpoint)?.variation.portrait.viewpoint;
   const portrait = {
-    viewpoint: balancedChoice(Object.keys(viewpoints), recent.map(item => item.variation?.portrait?.viewpoint), random),
+    viewpoint: balancedChoice(Object.keys(viewpoints).filter(id => id !== previousView),
+      recent.map(item => item.variation?.portrait?.viewpoint), random),
     encounter: balancedChoice(Object.keys(encounters), recent.map(item => item.variation?.portrait?.encounter), random),
+    composition: balancedChoice(Object.keys(compositions), recent.map(item => item.variation?.portrait?.composition), random),
   };
+  const silhouette = balancedChoice(Object.keys(biologicalSilhouettes), recent.map(item => item.variation?.silhouette), random);
   const challenge = balancedChoice(biologicalChallenges, recent.map(item => item.variation?.challenge), random);
   const printed = recent.filter(item => item.anatomy);
   const family = settings.printModel === false ? null : balancedChoice(Object.keys(bodyPlans), printed.map(familyOf), random);
   const anatomy = family ? samplePrintAnatomy(settings, family, inspirationIds, printed, random) : null;
-  return { version: ANATOMY_PLAN_VERSION, seed: String(seed), inspirationIds, portrait, challenge, family, anatomy };
+  return { version: ANATOMY_PLAN_VERSION, seed: String(seed), inspirationIds, portrait, silhouette, challenge, family, anatomy };
 }
 
 export function plannedDesign(settings, plan) {

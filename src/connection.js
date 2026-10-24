@@ -7,6 +7,7 @@ export function mountConnection(byId, jobs, toast) {
       byId('connection').classList.toggle('online',status.connected);
       byId('connection').querySelector('span').textContent = status.connected ? 'Codex connected' : 'Codex offline · Retry';
       byId('connection').title = status.reason || `Using ${status.model} through Codex`;
+      jobs.setTiming(status.generationTiming);
       jobs.resume(status.activeJob || sessionStorage.getItem('critter-job'));
     } catch(error) {
       byId('connection').querySelector('span').textContent = 'Codex offline · Retry';

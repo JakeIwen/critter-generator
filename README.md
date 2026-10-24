@@ -62,8 +62,9 @@ available and otherwise the account's returned default. No global Codex configur
 4. **3D Print / CAD** starts off for maximum biological freedom. Enable it to also make a simplified
    sculpture; then choose its total height (60–500 mm) and optional baseplate. Click **Generate lifeform**.
 5. Codex writes structured biology and field notes, then its image-generation tool depicts the animal
-   inside its habitat. Printing is skipped entirely when disabled. The loader estimates 130 seconds,
-   shows elapsed and remaining time, and keeps waiting if generation takes longer.
+   inside its habitat. Printing is skipped entirely when disabled. The loader uses the stored average
+   of the latest ten successful full generations (or however many exist), with a 130-second initial
+   fallback. It shows a stable estimated total and keeps waiting if generation takes longer.
 6. Download the portrait and field notes JSON. Printable specimens also have the **3D Print/CAD** tab,
    rotatable preview, **STL** and editable **OpenSCAD CAD source**.
 7. Open **Collection** to revisit saved animals. **Use these settings** restores its prompt, chips,
@@ -76,9 +77,13 @@ with the progress card. If the image step fails, the completed notes and any mod
 The 16 real animal groups span familiar vertebrates and distinct invertebrate forms, with two
 explicitly fictional bonuses. They deliberately mix taxonomic ranks for readable choices; see
 [Animal inspiration groups](docs/animal-inspiration.md) for the catalog and biological sources.
-Each generation samples inspirations, an anatomical challenge, camera viewpoint and ecological
-encounter. Portrait prompts include the actual habitat, depth, contact and foreground occlusion;
-they do not require a centered full-body studio pose. Recent history discourages repeated choices.
+Each generation samples inspirations, a biological silhouette and challenge, camera viewpoint,
+ecological encounter and occluding composition. The camera never immediately repeats the preceding
+known viewpoint. Portrait prompts use habitat, diet, field observation, courtship and danger as scene
+evidence: visible food or traces, physical interactions, layered habitat and foreground occlusion.
+Impossible environments must show their particular changes to geometry or materials rather than
+become generic fog. Biological images receive no numeric CAD proportions, preventing the simplified
+print body from dictating their shape. Recent history discourages repeated choices.
 The choices and seed are saved in `variation`, so portrait retries keep the organism and scene direction.
 
 Unrestricted animals use the structured `biology` description without the CAD body's dimensions or
@@ -92,6 +97,10 @@ artwork even when the simplified sculpt cannot reproduce them.
 **`.local/critters.sqlite` is the authoritative database.** SQLite uses WAL mode.
 The `specimens` table stores each animal's names, prose, biology, optional CAD anatomy, settings, print
 measurements, timestamps, and portrait state. `jobs` records generation progress and terminal status.
+Completed full jobs record `durationMs`; `app_metadata` stores the rolling timing aggregate. Eligible
+older jobs contribute from their saved start/finish timestamps without rewriting their records.
+Failed, cancelled, interrupted, partial and portrait-retry jobs are excluded. Each new job keeps the
+estimate it started with, including after a page reload, even when the global average changes.
 The first run includes a clearly labeled example sculpture. Generated specimens and artwork
 stay local and are not included in the repository.
 

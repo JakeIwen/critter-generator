@@ -42,7 +42,7 @@ export function renderStudio(root) {
             <label class="baseplate-control" for="baseplate"><input id="baseplate" type="checkbox" checked/> Include baseplate</label>
           </fieldset>
           <button id="generate" class="button primary" type="submit">${icon('sparkle')} Generate lifeform ${icon('arrow')}</button>
-          <p class="generation-note">Estimated wait: 2 min 10 sec.</p>
+          <p id="generation-estimate" class="generation-note"></p>
         </form>
         <div class="presets"><span class="eyebrow">NEED A NUDGE?</span><button data-preset="gentle">Oddly plausible <span>↗</span></button><button data-preset="weird">Nature’s mistake <span>↗</span></button><button data-preset="danger">Absolute menace <span>↗</span></button></div>
       </aside>

@@ -23,7 +23,7 @@ async function waitFor(read, ready) {
   throw new Error('Isolated generation did not finish in 15 seconds.');
 }
 
-async function isolatedGenerationServer(t, { failFirstPortrait = false } = {}) {
+async function isolatedGenerationServer(t, { failFirstPortrait = false, seedJobs = [] } = {}) {
   const scratch = await mkdtemp(path.join(tmpdir(), 'critter-generation-'));
   const listener = createServer().listen(0, '127.0.0.1');
   await once(listener, 'listening');
@@ -33,6 +33,11 @@ async function isolatedGenerationServer(t, { failFirstPortrait = false } = {}) {
   await mkdir(bin);
   const fixture = new URL('./fixtures/design-codex.mjs', import.meta.url).href;
   await writeFile(path.join(bin, 'codex'), `#!${process.execPath}\nimport ${JSON.stringify(fixture)};\n`, { mode: 0o700 });
+  for (const job of seedJobs) {
+    const folder = path.join(scratch, 'data/jobs', job.id);
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, 'record.json'), JSON.stringify(job));
+  }
   const child = spawn(process.execPath, ['server/index.mjs'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, PATH: bin, PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data'),
       CRITTER_TEST_LOG: log, CRITTER_TEST_FAIL_FIRST_PORTRAIT: failFirstPortrait ? '1' : '', PUBLIC_ORIGIN: '' } });
@@ -88,7 +93,9 @@ test('HTTP generation carries sampled anatomy through Codex, storage, mesh and p
   const turns = await requests();
   assert.equal(turns.length, 6, 'Each specimen gets one design request and one portrait request');
   for (let index = 0; index < 3; index++) {
-    assert(turns[index * 2 + 1].input[0].text.includes(JSON.stringify(specimens[2 - index].anatomy)));
+    const portrait = turns[index * 2 + 1].input[0].text;
+    assert(portrait.includes(JSON.stringify(specimens[2 - index].biology)));
+    assert(!portrait.includes(JSON.stringify(specimens[2 - index].anatomy)), 'CAD dimensions do not shape the wildlife image');
   }
 });
 
@@ -99,6 +106,7 @@ test('portrait-only generation saves biology without CAD and retries the same or
   assert.equal(job.status, 'partial', job.message);
   const recordRoute = `/api/specimens/${job.specimenId}/files/record.json`;
   const specimen = await get(recordRoute);
+  assert.equal((await get('/api/status')).generationTiming.sampleCount, 0, 'Partial generation is not a completed timing sample');
   assert.equal(specimen.print, null);
   assert.equal(specimen.anatomy, null);
   assert.equal(specimen.biology.legCount, 0);
@@ -119,6 +127,7 @@ test('portrait-only generation saves biology without CAD and retries the same or
   const repainted = await get(recordRoute);
   for (const key of ['anatomy', 'biology', 'print', 'variation', 'settings']) assert.deepEqual(repainted[key], specimen[key]);
   assert.equal(repainted.image, true);
+  assert.equal((await get('/api/status')).generationTiming.sampleCount, 0, 'Portrait retries do not shorten the full-generation estimate');
   assert.deepEqual((await readdir(folder)).sort(), ['portrait.png', 'record.json']);
   assert.equal((await fetch(`${origin}/api/specimens/${specimen.id}/files/portrait.png`)).status, 200);
   const turns = await requests();
@@ -128,5 +137,34 @@ test('portrait-only generation saves biology without CAD and retries the same or
   assert(turns[1].input[0].text.includes(specimen.biology.bodyPlan));
   const next = await post('/api/generate', settings);
   assert.equal(next.status, 'completed', 'Saved null anatomy can participate in future diversity history');
+  assert.equal((await get('/api/status')).generationTiming.sampleCount, 1);
   assert.equal((await fetch(`${origin}/api/specimens/example-lantern/files/model.stl`)).status, 200, 'Legacy printable example remains downloadable');
+});
+
+test('HTTP loader estimate uses the last ten completed generations and freezes the preceding average on each job', async t => {
+  const seedJobs = Array.from({ length: 12 }, (_, index) => {
+    const start = Date.UTC(2025, 0, 1, index);
+    return { id: `history-${index}`, status: 'completed', kind: 'generation', designThreadId: `design-${index}`,
+      createdAt: new Date(start).toISOString(), finishedAt: new Date(start + (60 + index * 10) * 1000).toISOString() };
+  });
+  for (const [id, status, kind] of [['retry', 'completed', 'portrait'], ['failed', 'failed', 'generation']]) {
+    seedJobs.push({ id, status, kind, createdAt: '2025-01-02T00:00:00Z', finishedAt: '2025-01-02T00:20:00Z' });
+  }
+  const { origin, get, post } = await isolatedGenerationServer(t, { seedJobs });
+  const before = (await get('/api/status')).generationTiming;
+  assert.equal(before.sampleCount, 10);
+  assert.equal(before.averageDurationMs, 125_000);
+  assert.equal(before.estimatedDurationMs, 125_000);
+  const connected = await fetch(origin + '/api/connect', { method: 'POST', headers, body: '{}' });
+  assert.equal(connected.status, 200);
+  assert.deepEqual((await connected.json()).generationTiming, before);
+  const job = await post('/api/generate', { ...legacySettings, printModel: false });
+  assert.equal(job.status, 'completed', job.message);
+  assert.equal(job.estimatedDurationMs, before.estimatedDurationMs);
+  assert.equal(job.durationMs, Date.parse(job.finishedAt) - Date.parse(job.createdAt));
+  const after = (await get('/api/status')).generationTiming;
+  assert.equal(after.sampleCount, 10);
+  assert(Math.abs(after.averageDurationMs - (1_170_000 + job.durationMs) / 10) <= 1);
+  assert.equal(after.estimatedDurationMs, after.averageDurationMs);
+  assert.equal((await get(`/api/jobs/${job.id}`)).estimatedDurationMs, 125_000, 'Current job keeps its original estimate');
 });

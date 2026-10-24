@@ -4,7 +4,7 @@ import { createAnatomyPlan, plannedDesign } from '../shared/anatomy-plan.mjs';
 import { bodyPlans } from '../shared/body-plans.mjs';
 import { Anatomy, example, GenerationSpecimen, Settings, illustrationPrompt } from '../shared/specimen.mjs';
 import { animalTypes, animalTypeIds } from '../shared/animal-types.mjs';
-import { viewpoints, encounters } from '../shared/encounter-directions.mjs';
+import { viewpoints, encounters, compositions, biologicalSilhouettes } from '../shared/encounter-directions.mjs';
 
 const settings = Settings.parse({ absurdity: 65, deviancy: 35, lethality: 70, height: 100 });
 const specimenFor = plan => ({ ...example, anatomy: plan.anatomy ? { ...example.anatomy, ...plan.anatomy } : null,
@@ -63,7 +63,8 @@ test('default design output must keep the sampled anatomy and prose and portrait
   assert.throws(() => request.parse({ ...example, anatomy: { ...specimen.anatomy, eyes: specimen.anatomy.eyes === 1 ? 2 : 1 } }));
   assert(request.parse({ ...specimenWithoutMetadata(specimen), anatomy: { ...specimen.anatomy, color: '#123456' } }));
   assert(request.prompt.includes(JSON.stringify(plan.anatomy)));
-  assert(illustrationPrompt(specimen).includes(JSON.stringify(specimen.anatomy)));
+  assert(illustrationPrompt(specimen).includes(JSON.stringify(specimen.biology)));
+  assert(!illustrationPrompt(specimen).includes(JSON.stringify(specimen.anatomy)));
 });
 
 function specimenWithoutMetadata({ variation, ...specimen }) { return specimen; }
@@ -80,7 +81,7 @@ test('explicit physical preferences can override the roll within safe geometry l
 });
 
 test('default inspiration pool covers the animal kingdom and persists varied camera encounters', () => {
-  const history = [], groups = new Set(), angles = new Set(), activities = new Set();
+  const history = [], groups = new Set(), angles = new Set(), activities = new Set(), framing = new Set(), silhouettes = new Set();
   for (let index = 0; index < 120; index++) {
     const plan = createAnatomyPlan({ ...settings, printModel: false }, `kingdom-${index}`, history);
     assert.equal(plan.anatomy, null); assert.equal(plan.family, null);
@@ -89,11 +90,29 @@ test('default inspiration pool covers the animal kingdom and persists varied cam
     assert(plan.inspirationIds.some(id => !animalTypes.find(type => type.id === id).fictional));
     for (const id of plan.inspirationIds) groups.add(id);
     angles.add(plan.portrait.viewpoint); activities.add(plan.portrait.encounter);
+    framing.add(plan.portrait.composition); silhouettes.add(plan.silhouette);
+    assert.notEqual(plan.portrait.viewpoint, history[0]?.variation.portrait.viewpoint, 'Successive generations change the camera angle');
+    assert(plannedDesign({ ...settings, printModel: false }, plan).prompt.includes(biologicalSilhouettes[plan.silhouette]));
     history.unshift(specimenFor(plan));
   }
   assert.deepEqual([...groups].sort(), [...animalTypeIds].sort());
   assert.deepEqual([...angles].sort(), Object.keys(viewpoints).sort());
   assert.deepEqual([...activities].sort(), Object.keys(encounters).sort());
+  assert.deepEqual([...framing].sort(), Object.keys(compositions).sort());
+  assert.deepEqual([...silhouettes].sort(), Object.keys(biologicalSilhouettes).sort());
+});
+
+test('camera selection avoids the latest angle even when it is the least-used angle', () => {
+  const latest = 'overhead';
+  const history = [{ ...example, variation: { portrait: { viewpoint: latest } } },
+    ...Object.keys(viewpoints).filter(id => id !== latest).flatMap(viewpoint =>
+      Array.from({ length: 2 }, () => ({ ...example, variation: { portrait: { viewpoint } } })))];
+  for (let index = 0; index < 20; index++) {
+    const plan = createAnatomyPlan({ ...settings, printModel: false }, `camera-${index}`, history);
+    assert.notEqual(plan.portrait.viewpoint, latest);
+    const specimen = specimenFor(plan);
+    assert.equal(illustrationPrompt(specimen), illustrationPrompt(structuredClone(specimen)), 'A persisted plan fixes the composition on retry');
+  }
 });
 
 test('selected animal chips limit the inspiration pool, including single and fictional-only choices', () => {

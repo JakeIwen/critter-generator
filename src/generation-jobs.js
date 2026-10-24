@@ -3,6 +3,12 @@ import { createGenerationProgress } from './generation-progress.js';
 const runningStatuses = ['queued', 'running'];
 const stageTitles = {design:'Discovering a new species',model:'Building the print sculpture',image:'Observing it in its environment',done:'Discovery complete'};
 
+function refreshTiming(progress) {
+  void api('/api/status', { signal: AbortSignal.timeout(5000) })
+    .then(status => progress.setTiming(status.generationTiming))
+    .catch(() => {}); // Connection polling retries this optional refresh.
+}
+
 export function createJobController(byId, { onBusy, onLaunchPending, onPending, onSpecimen, onComplete, onError }) {
   let activeJob = null;
   let polling = false;
@@ -19,13 +25,14 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
         byId('status-box').classList.remove('hidden');
         byId('status-message').textContent = job.message;
         byId('status-title').textContent = stageTitles[job.stage] || 'Working on your specimen';
-        if (runningStatuses.includes(job.status) && activeJob !== cancellingJob) progress.start(activeJob, job.createdAt);
+        if (runningStatuses.includes(job.status) && activeJob !== cancellingJob) progress.start(activeJob, job.createdAt, job.estimatedDurationMs);
         if (!job.specimenId && runningStatuses.includes(job.status)) onPending(job, byId('status-title').textContent);
         if (job.specimenId) await onSpecimen(job.specimenId);
         if (!runningStatuses.includes(job.status)) {
           progress.stop(true); cancellingJob = null;
           activeJob = null; sessionStorage.removeItem('critter-job');
           byId('status-box').classList.add('hidden'); onBusy(false);
+          refreshTiming(progress);
           await onComplete(job); break;
         }
         await new Promise(resolve => setTimeout(resolve, 1800));
@@ -41,6 +48,7 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
     try {
       const result = await api(url, { method: 'POST', body: JSON.stringify(body) });
       activeJob = result.jobId; sessionStorage.setItem('critter-job', activeJob);
+      progress.start(activeJob, result.createdAt, result.estimatedDurationMs);
       byId('status-title').textContent = stageTitles.design;
       byId('status-message').textContent = 'Connecting to Codex…';
       if (url === '/api/generate') onLaunchPending({ stage: 'design', message: 'Connecting to Codex…' }, stageTitles.design);
@@ -59,7 +67,7 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
     }
     catch (error) { onError(error.message); }
   };
-  return { launch, resume(jobId) {
+  return { launch, setTiming: progress.setTiming, resume(jobId) {
     if (jobId && (!activeJob || activeJob === jobId) && !polling) { activeJob = jobId; void poll(); }
   } };
 }

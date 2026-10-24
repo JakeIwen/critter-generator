@@ -3,7 +3,7 @@ import { sliders } from './sliders.mjs';
 import { PRINT_HEIGHT } from './print-settings.mjs';
 import { shapeRanges } from './body-plans.mjs';
 import { animalTypeIds, animalTypeById } from './animal-types.mjs';
-import { viewpoints, encounters } from './encounter-directions.mjs';
+import { viewpoints, encounters, compositions, biologicalSilhouettes } from './encounter-directions.mjs';
 
 const count = (max) => z.number().int().min(0).max(max);
 const level = z.number().int().min(0).max(100);
@@ -80,6 +80,9 @@ function inspirationDirection(settings, plan) {
 ${inspirations.length ? inspirations.map(type => `${type.label}${type.fictional ? ' (fictional inspiration)' : ''}: ${type.traits} Habitats: ${type.habitats}`).join('\n') : 'Any part of the animal kingdom, including marine and invertebrate life.'}
 Draw from living or extinct animal lineages. These are starting points, not a request to paint an ordinary animal a different color.
 ${plan?.challenge ?? 'Make at least one substantial anatomical or ecological choice that rewards a second look.'}
+${biologicalSilhouettes[plan?.silhouette] ?? 'Choose a silhouette that follows this animal’s ecology rather than defaulting to a heavy rounded torso.'}
+Adapt that silhouette direction to the selected animal groups and explicit user preferences. At low
+absurdity, use their existing biological structures; at high absurdity, reorganize the body more radically.
 ${settings.legless ? 'NO LEGS is a hard requirement: biology.legCount must be 0 and any CAD legPairs/legLength must be 0. Choose another mode of locomotion or attachment. Fins, wings, tentacles and a muscular foot are not legs.' : 'Legless, eyeless, sessile, colonial, swimming and flying animals are valid. Never add legs just to make an organism look familiar.'}`;
 }
 
@@ -128,15 +131,19 @@ animal into a friendly pet. Equally, low settings need not become horror. Keep a
 All five sliders must materially influence the result without requiring every appendage count to be high.
 biology describes the organism's bodyPlan, locomotion, covering, 2–6 visible features, and legCount.
 Habitat must specify a concrete environment the animal can actually inhabit, including marine or aerial
-conditions where appropriate. Diet, locomotion, covering and environment must agree.
+conditions where appropriate. Name visible structures, materials and scale cues rather than only a mood.
+Diet must identify something that can be shown as food or prey. Diet, locomotion, covering and environment
+must agree. For an impossible habitat or behavior, describe its observable geometry or physical effect.
 ${modelDirection(settings, plan)}
-The epithet is a short subtitle. fieldNote is an observational surprise. No tools are needed.`;
+The epithet is a short subtitle. fieldNote is a concrete witnessed event involving the animal and a
+specific environmental object, food or other organism. Its surprise must be depictable, not only a pun
+or an abstract claim about reality. No tools are needed.`;
 }
 
 // Older specimens predate these sliders and keep the original muted palette.
 function paletteDirection({ femme = 0, psychedelic = 0 } = {}) {
   const lines = [];
-  if (psychedelic >= 60) lines.push('Psychedelic styling: vivid fluorescent and iridescent color, hypnotic swirling skin patterns, a dreamlike glowing atmosphere.');
+  if (psychedelic >= 60) lines.push('Psychedelic styling: vivid fluorescent and iridescent biological surfaces and hypnotic patterns. Keep the surrounding habitat legible; psychedelic color is not a substitute for environmental structure.');
   else if (psychedelic >= 30) lines.push('Touches of surreal, saturated color and patterning in the skin.');
   if (femme >= 60) lines.push('Femme styling: graceful poised posture, ornate frills, elegant lashes and delicate jewel-toned ornament; never sexualized.');
   else if (femme >= 30) lines.push('A hint of elegance and ornament in the pose and markings.');
@@ -149,29 +156,43 @@ export function illustrationPrompt(specimen) {
   const encounter = specimen.variation?.portrait;
   const viewpoint = viewpoints[encounter?.viewpoint] ?? viewpoints.profile;
   const action = encounters[encounter?.encounter] ?? encounters.interaction;
+  const composition = compositions[encounter?.composition] ?? compositions.embedded;
   const physical = specimen.biology ? `Actual organism biology: ${JSON.stringify(specimen.biology)}.
-This is the visual authority, including structures absent from the simplified print model.` :
+This is the visual authority. Preserve its real body organization, proportions and appendages;
+do not replace slender, radial, branching or segmented forms with a stout toy-like torso.` :
     `Physical anatomy: ${JSON.stringify(specimen.anatomy)}. Dimensions are relative semi-axes.
 Match the body proportions and leg, eye, horn and antenna counts. Missing head-axis multipliers mean 1.`;
   return `Generate one detailed wildlife image of this invented animal using the image generation tool.
 Use the tool now; do not return a textual prompt or code. No other tools are needed.
-Subject: ${specimen.englishName} (${specimen.latinName}). ${specimen.description}
-${physical}
-${specimen.anatomy && specimen.biology ? `Simplified CAD reference, not a limit on the animal: ${JSON.stringify(specimen.anatomy)}.` : ''}
-${specimen.biology?.legCount === 0 || (!specimen.biology && specimen.anatomy?.legPairs === 0) ? 'This animal has NO LEGS. Do not invent supporting legs or feet to pose it. Depict its actual swimming, gliding, crawling, floating or attached way of life.' : ''}
+Make an immersive observed scene, not an isolated animal displayed before a decorative backdrop.
+FIELD-NOTE EVIDENCE (use these facts to construct the visible scene):
 ENVIRONMENT: ${specimen.habitat}
-Diet and ecological activity: ${specimen.diet}
-Photograph the organism IN this environment. Build a specific habitat with credible scale, depth,
-substrate or water column, weather/light and physical contact appropriate to its biology.
-Let suitable foreground elements naturally obscure some of its body: vegetation, reef structures,
-rocks, water, suspended particles, nest material or a host surface, only where ecologically appropriate.
-Place habitat elements in front of, around and behind it. Integrate contact shadows, refraction,
-sediment, moisture, currents or displaced vegetation as applicable. The animal must remain identifiable,
-but hidden limbs or body sections should stay hidden; do not duplicate them to display every feature.
+DIET: ${specimen.diet}
+FIELD OBSERVATION: ${specimen.fieldNote}
+COURTSHIP: ${specimen.courtship}
+THREAT: ${specimen.danger}
+Build the scene around at least three concrete visual anchors from this evidence: a habitat structure,
+a food/prey item or feeding trace, and the object or physical event in FIELD OBSERVATION. Show the
+chosen encounter actually happening. Do not replace specific evidence with a generic dirt floor and fog.
+If a note describes impossible space or biology, make that particular effect visibly alter geometry,
+materials, paths, light or interactions. Vague haze, a random portal or a galaxy texture is not enough.
+Do not introduce a conventional ground plane into a swimming, suspended, attached or aerial habitat.
 VIEWPOINT: ${viewpoint}
 ENCOUNTER: ${action}
-Use an observed moment rather than a display pose. Compose asymmetrically when it suits the encounter;
-a full body, centered subject, visible feet and empty margins are not requirements. Square image.
+COMPOSITION: ${composition}
+Give foreground, the animal's immediate surroundings, and the more distant environment distinct,
+readable structures. Foreground elements naturally obscure some of its body. Preserve visible depth
+and scale: nearby material, physical contact or displaced food, and a farther habitat landmark.
+Reserve substantial image area for the environment, even when the viewpoint crops the animal closely.
+Use substrate contact, attachment, bent growth, disturbed sediment, wakes, reflections or refraction
+where appropriate. Hidden body sections stay hidden; never duplicate limbs to display every feature.
+SUBJECT: ${specimen.englishName} (${specimen.latinName}). ${specimen.description}
+${physical}
+${specimen.anatomy ? `Color reference only: ${specimen.anatomy.color}, accent ${specimen.anatomy.accent}.` : ''}
+${specimen.biology?.legCount === 0 || (!specimen.biology && specimen.anatomy?.legPairs === 0) ? 'This animal has NO LEGS. Do not invent supporting legs or feet to pose it. Depict its actual swimming, gliding, crawling, floating or attached way of life.' : ''}
+The sampled viewpoint is a real camera constraint, not an excuse to return to a front-facing display
+pose. The face need not be visible. Compose an observed moment; a complete centered silhouette and
+empty margins are not required. Square image.
 Natural documentary lighting appropriate to the described environment, finely observed biological
 surface detail, ${style.palette}. Never replace the habitat with a studio backdrop or display plinth.
 ${style.lines}
