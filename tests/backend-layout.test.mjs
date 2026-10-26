@@ -52,7 +52,7 @@ function sharedImportProblems(file, source) {
 
 test("server entry composes adapters while shared models stay server-independent", () => {
   const entryImports = imports(read("server/index.mjs"));
-  for (const owner of ["./codex.mjs", "./store.mjs", "./geometry.mjs", "./access.mjs", "./login.mjs"]) assert.ok(entryImports.includes(owner), owner);
+  for (const owner of ["./codex.mjs", "./store.mjs", "./generation-jobs.mjs", "./specimen-routes.mjs", "./access.mjs", "./login.mjs"]) assert.ok(entryImports.includes(owner), owner);
   for (const model of ["shared/specimen.mjs", "shared/sliders.mjs"]) {
     assert.deepEqual(sharedImportProblems(model, read(model)), []);
   }

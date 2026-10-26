@@ -12,7 +12,7 @@ test('browser entry point only loads styles and delegates startup', async () => 
 });
 
 test('frontend features depend inward and the studio remains wiring', async () => {
-  const featureFiles = ['api.js', 'collection.js', 'connection.js', 'generation-form.js', 'generation-jobs.js', 'icons.js', 'presets.js', 'specimen-format.js', 'specimen-view.js', 'template.js'];
+  const featureFiles = ['api.js', 'collection.js', 'connection.js', 'generation-form.js', 'generation-directions.js', 'generation-jobs.js', 'icons.js', 'presets.js', 'specimen-format.js', 'specimen-view.js', 'specimen-actions.js', 'template.js'];
   for (const file of featureFiles) {
     assert.ok(!(await source(file)).includes("from './studio.js'"), `${file} must not depend on the composition root`);
   }

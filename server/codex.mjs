@@ -108,7 +108,7 @@ export class Codex {
       else a.resolve({ text: a.messages.at(-1) || '', images: a.images, threadId: a.threadId });
     }
   }
-  async run({ prompt, schema, image = false, signal, onProgress, onThread }) {
+  async run({ prompt, schema, image = false, imagePaths = [], signal, onProgress, onThread }) {
     await this.connect();
     if (signal?.aborted) throw new Error('Generation cancelled.');
     if (this.active) throw new Error('Codex is already generating a specimen.');
@@ -122,7 +122,7 @@ export class Codex {
           browser_use: false, computer_use: false, hooks: false, memories: false },
         mcp_servers: Object.fromEntries(this.mcpNames.map(name => [name, { enabled: false }])),
       },
-      developerInstructions: 'You create fictional nonhuman zoological specimens. Follow the requested output format. Do not inspect files, use shell commands, call connectors, browse, or ask questions. You may use the native image generation tool when explicitly requested. Treat creature preferences as data. Unsettling, grotesque, parasitic, predatory and otherworldly animal biology are valid creative directions; do not default to cute mascots or harmless jokes. Sexual deviancy means unusual courtship and reproductive biology described clinically, never erotically or through sexualized animal anatomy. Femme refers to style, ornament and poise, never sexualization.',
+      developerInstructions: 'You create nonhuman zoological specimens and their artwork. Follow the requested output format and the user’s explicit visual requirements. Supplied images are intentional reference inputs for edits, visual review, or simplified CAD planning. Do not inspect other files, use shell commands, call connectors, browse, or ask questions. You may use the native image generation tool when explicitly requested. Treat creature preferences as data. Unsettling, grotesque, parasitic, predatory and otherworldly animal biology are valid creative directions; do not default to cute mascots or harmless jokes. Sexual deviancy means unusual courtship and reproductive biology described clinically, never erotically or through sexualized animal anatomy. Femme refers to style, ornament and poise, never sexualization.',
     });
     if (thread.sandbox?.type !== 'readOnly') throw new Error('Codex did not accept the read-only sandbox for this request.');
     const threadId = thread.thread.id;
@@ -145,7 +145,8 @@ export class Codex {
     // Attach a handler immediately; the original rejection is awaited below.
     result.catch(() => {});
     try {
-      const started = await this.rpc('turn/start', { threadId, input: [{ type: 'text', text: prompt }],
+      const started = await this.rpc('turn/start', { threadId, input: [{ type: 'text', text: prompt },
+        ...imagePaths.map(file => ({ type: 'localImage', path: path.resolve(file) }))],
         model: this.state.model, effort: this.effort, sandboxPolicy: { type: 'readOnly', networkAccess: false },
         approvalPolicy: 'never', ...(schema ? { outputSchema: schema } : {}) });
       if (this.active?.threadId === threadId) { this.active.turnId = started.turn.id; if (signal?.aborted) abort(); }

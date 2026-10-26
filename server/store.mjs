@@ -3,6 +3,9 @@ import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { DatabaseSync } from 'node:sqlite';
 import { generationTimingFromJobs } from '../shared/generation-timing.mjs';
+import { modelFilename, portraitFilename, portraitVersionOf } from '../shared/specimen-assets.mjs';
+import { normalizePortrait, publishPortrait } from './portrait-assets.mjs';
+import { publishModel } from './model-assets.mjs';
 
 const GENERATION_TIMING_KEY = 'generation-timing';
 
@@ -63,7 +66,7 @@ export class Store {
       .run(GENERATION_TIMING_KEY, JSON.stringify(timing));
     return timing;
   }
-  async model(id, anatomy, height, baseplate = true) {
+  async model(id, anatomy, height, baseplate = true, options = {}) {
     const result = await new Promise((resolve, reject) => {
       const worker = new Worker(new URL('./model-worker.mjs', import.meta.url), {
         workerData: { anatomy, height, baseplate }, execArgv: process.execArgv.filter(arg => !arg.startsWith('--input-type')),
@@ -73,12 +76,19 @@ export class Store {
       worker.once('error', e => { clearTimeout(timer); reject(e); });
       worker.once('exit', code => { clearTimeout(timer); if (code) reject(new Error('Model worker stopped.')); });
     });
-    const folder = path.dirname(this.file('specimens', id, 'record.json'));
-    mkdirSync(folder, { recursive: true });
-    writeFileSync(path.join(folder, 'model.stl'), result.stl);
-    writeFileSync(path.join(folder, 'model.scad'), result.model.scad);
-    writeFileSync(path.join(folder, 'mesh.json'), JSON.stringify({ positions: result.model.positions, triangles: result.model.triangles }));
-    return result.model.info;
+    return publishModel(path.dirname(this.file('specimens', id, 'record.json')), result, options);
   }
   portrait(id, bytes) { writeFileSync(this.file('specimens', id, 'portrait.png'), bytes); }
+  async savePortrait(specimen, bytes, options = {}) {
+    const normalized = await normalizePortrait(bytes);
+    return publishPortrait(this, specimen, normalized, options);
+  }
+  portraitFile(specimen, requestedVersion) {
+    const version = requestedVersion ?? portraitVersionOf(specimen);
+    const current = portraitVersionOf(specimen);
+    if (!version || version > current) throw new Error('Portrait version not found.');
+    const archived = this.file('specimens', specimen.id, portraitFilename(version));
+    return existsSync(archived) || version !== current ? archived : this.file('specimens', specimen.id, 'portrait.png');
+  }
+  modelFile(specimen, name) { return this.file('specimens', specimen.id, modelFilename(specimen, name)); }
 }

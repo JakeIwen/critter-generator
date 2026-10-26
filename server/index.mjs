@@ -3,13 +3,11 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { Settings, illustrationPrompt, example } from '../shared/specimen.mjs';
-import { createAnatomyPlan, plannedDesign } from '../shared/anatomy-plan.mjs';
-import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
-import { JOB_KINDS, completedGenerationDuration } from '../shared/generation-timing.mjs';
-import { Codex, imageBytes, safeError } from './codex.mjs';
+import { example } from '../shared/specimen.mjs';
+import { Codex, safeError } from './codex.mjs';
+import { GenerationJobs } from './generation-jobs.mjs';
+import { createSpecimenRoutes } from './specimen-routes.mjs';
 import { Store } from './store.mjs';
-import { DESIGN_VERSION } from './geometry.mjs';
 import { createAccessVerifier } from './access.mjs';
 import { createLogin } from './login.mjs';
 
@@ -49,22 +47,15 @@ app.use((req, res, next) => {
   next();
 });
 if (login) app.use((req, res, next) => isPublicHost(req) ? login.router(req, res, next) : next());
-app.use(express.json({ limit: '16kb' }));
+app.use(express.json({ limit: '64kb' }));
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
-let current = null;
-for (const job of store.list('jobs')) {
-  if (['queued', 'running'].includes(job.status)) store.save('jobs', job.id, { ...job, status: 'interrupted', message: 'The server restarted. Any completed specimen files have been kept.', finishedAt: new Date().toISOString() });
-}
+const jobs = new GenerationJobs({ store, codex });
 if (!store.get('specimens', 'example-lantern')) {
-  const print = await store.model('example-lantern', example.anatomy, 100);
-  store.save('specimens', 'example-lantern', { ...example, id: 'example-lantern', demo: true, image: false, print,
-    settings: { prompt: '', absurdity: 65, deviancy: 35, lethality: 20, height: 100 }, createdAt: '2026-01-01T00:00:00.000Z' });
-}
-// Generated specimens keep the model they were made with; the example follows the current print recipe.
-if (store.get('specimens', 'example-lantern').print.designVersion !== DESIGN_VERSION) {
-  const print = await store.model('example-lantern', example.anatomy, 100);
-  store.save('specimens', 'example-lantern', { ...store.get('specimens', 'example-lantern'), print });
+  store.save('specimens', 'example-lantern', { ...example, anatomy: null,
+    id: 'example-lantern', demo: true, image: false, print: null,
+    settings: { prompt: '', absurdity: 65, deviancy: 35, lethality: 20, height: 100, printModel: false },
+    createdAt: '2026-01-01T00:00:00.000Z' });
 }
 // The example ships with a Codex-generated portrait so new installs aren't blank.
 const examplePortrait = path.join(root, 'server/assets/example-lantern-portrait.png');
@@ -74,7 +65,7 @@ if (!exampleRecord.image && existsSync(examplePortrait)) {
   store.save('specimens', 'example-lantern', { ...exampleRecord, image: true, imageError: null });
 }
 
-const connectionStatus = () => ({ ...codex.state, activeJob: current?.job.id || null, generationTiming: store.generationTiming() });
+const connectionStatus = () => ({ ...codex.state, activeJob: jobs.current?.job.id || null, generationTiming: store.generationTiming() });
 app.get('/api/status', (_req, res) => res.json(connectionStatus()));
 app.post('/api/shutdown', (req, res) => {
   if (req.headers['x-critter-stop-token'] !== stopToken) return res.status(403).json({ error: 'Invalid instance token.' });
@@ -83,108 +74,7 @@ app.post('/api/shutdown', (req, res) => {
 app.post('/api/connect', async (_req, res) => {
   try { await codex.connect(); res.json(connectionStatus()); } catch (e) { res.status(503).json({ error: safeError(e) }); }
 });
-app.get('/api/specimens', (_req, res) => res.json(store.list('specimens')));
-app.get('/api/jobs/:id', (req, res) => {
-  const job = store.get('jobs', req.params.id);
-  job ? res.json(job) : res.status(404).json({ error: 'Generation not found.' });
-});
-const files = { 'portrait.png': 'image/png', 'model.stl': 'model/stl', 'model.scad': 'text/plain', 'mesh.json': 'application/json', 'record.json': 'application/json' };
-const modelFiles = new Set(['model.stl', 'model.scad', 'mesh.json']);
-app.get('/api/specimens/:id/files/:name', (req, res) => {
-  const { id, name } = req.params;
-  if (!files[name]) return res.status(404).json({ error: 'File not found.' });
-  const specimen = store.get('specimens', id);
-  if (!specimen || (name === 'portrait.png' && !specimen.image) || (!specimen.print && modelFiles.has(name))) return res.status(404).json({ error: 'File not found.' });
-  const file = store.file('specimens', id, name);
-  if (!existsSync(file)) return res.status(404).json({ error: 'File not found.' });
-  res.type(files[name]);
-  if (req.query.download === '1') {
-    const slug = specimen.englishName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'critter';
-    res.attachment(`${slug}.${name.split('.').at(-1)}`);
-  }
-  if (name === 'record.json') return res.json(specimen);
-  res.sendFile(file, { dotfiles: 'allow' });
-});
-app.post('/api/generate', (req, res) => {
-  const parsed = Settings.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: `Use valid animal choices, slider values from 0–100, height ${PRINT_HEIGHT.min}–${PRINT_HEIGHT.max} mm, checkbox values, and a prompt under 1,000 characters.` });
-  if (current) return res.status(409).json({ error: 'A specimen is already being generated.', jobId: current.job.id });
-  res.status(202).json(startJob(parsed.data));
-});
-app.post('/api/specimens/:id/portrait', (req, res) => {
-  const specimen = store.get('specimens', req.params.id);
-  if (!specimen) return res.status(404).json({ error: 'Specimen not found.' });
-  if (specimen.image) return res.status(409).json({ error: 'This specimen already has a portrait.' });
-  if (current) return res.status(409).json({ error: 'A specimen is already being generated.', jobId: current.job.id });
-  res.status(202).json(startJob(specimen.settings, specimen));
-});
-app.post('/api/jobs/:id/cancel', (req, res) => {
-  if (current?.job.id !== req.params.id) return res.status(409).json({ error: 'That generation is no longer running.' });
-  current.controller.abort(); update(current.job, { message: 'Cancelling…' }); res.json({ ok: true });
-});
-
-function update(job, data) {
-  Object.assign(job, data);
-  const durationMs = completedGenerationDuration(job);
-  if (durationMs !== null) job.durationMs = durationMs;
-  store.save('jobs', job.id, job);
-}
-const DESIGN_ATTEMPTS = 3;
-async function designWithRetries(job, design, signal) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await codex.run({ prompt: design.prompt, schema: design.schema, signal,
-        onThread: threadId => update(job, { designThreadId: threadId }) });
-    } catch (e) {
-      if (e.code !== 'runaway_output' || attempt >= DESIGN_ATTEMPTS || signal.aborted) throw e;
-      update(job, { message: `Codex stalled; trying again (attempt ${attempt + 1} of ${DESIGN_ATTEMPTS})…` });
-    }
-  }
-}
-function startJob(settings, existing) {
-  const job = { id: randomUUID(), status: 'queued', stage: 'design', message: 'Connecting to Codex…', createdAt: new Date().toISOString(), specimenId: existing?.id || null,
-    kind: existing ? JOB_KINDS.PORTRAIT : JOB_KINDS.GENERATION, estimatedDurationMs: store.generationTiming().estimatedDurationMs };
-  if (existing?.variation) job.variation = existing.variation;
-  const controller = new AbortController();
-  current = { job, controller }; store.save('jobs', job.id, job);
-  void execute(job, settings, existing, controller.signal);
-  return { jobId: job.id, estimatedDurationMs: job.estimatedDurationMs };
-}
-async function execute(job, settings, existing, signal) {
-  let specimen = existing;
-  try {
-    update(job, { status: 'running', message: 'Inventing anatomy and writing field notes…' });
-    if (!existing) {
-      const variation = createAnatomyPlan(settings, job.id, store.list('specimens'));
-      update(job, { variation });
-      const design = plannedDesign(settings, variation);
-      const generated = await designWithRetries(job, design, signal);
-      if (signal.aborted) throw new Error('Generation cancelled.');
-      let parsed;
-      try { parsed = design.parse(JSON.parse(generated.text)); } catch { throw new Error('Codex returned an invalid specimen. Please try again.'); }
-      const id = randomUUID();
-      let print = null;
-      if (settings.printModel !== false) {
-        update(job, { stage: 'model', message: 'Sculpting and checking the printable solid…' });
-        print = await store.model(id, parsed.anatomy, settings.height, settings.baseplate);
-      }
-      specimen = { ...parsed, id, settings, variation, print, createdAt: new Date().toISOString(), image: false, demo: false };
-      store.save('specimens', id, specimen); update(job, { specimenId: id });
-    }
-    if (signal.aborted) throw new Error('Generation cancelled.');
-    update(job, { stage: 'image', message: 'Painting the specimen portrait. This can take a few minutes…' });
-    const result = await codex.run({ prompt: illustrationPrompt(specimen), image: true, signal,
-      onThread: threadId => update(job, { imageThreadId: threadId }), onProgress: message => update(job, { message }) });
-    if (signal.aborted) throw new Error('Generation cancelled.');
-    store.portrait(specimen.id, await imageBytes(result.images));
-    store.save('specimens', specimen.id, { ...specimen, image: true, imageError: null });
-    update(job, { status: 'completed', stage: 'done', message: 'A new species has been catalogued.', finishedAt: new Date().toISOString() });
-  } catch (e) {
-    const message = signal.aborted ? 'Generation cancelled. Completed field notes and any model files have been kept.' : safeError(e);
-    if (specimen && !specimen.image) store.save('specimens', specimen.id, { ...specimen, imageError: message });
-    update(job, { status: signal.aborted ? 'cancelled' : specimen ? 'partial' : 'failed', message, finishedAt: new Date().toISOString() });
-  } finally { if (current?.job.id === job.id) current = null; }
-}
+app.use(createSpecimenRoutes({ store, jobs }));
 
 app.use(express.static(distRoot));
 app.get('/', (_req, res) => res.sendFile(path.join(distRoot, 'index.html')));
@@ -197,7 +87,7 @@ server.once('listening', () => {
 });
 server.on('error', e => { console.error(safeError(e)); codex.close(); process.exit(1); });
 function shutdown() {
-  current?.controller.abort(); codex.close();
+  jobs.current?.controller.abort(); codex.close();
   try { unlinkSync(path.join(store.root, 'server.json')); } catch {}
   server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref();
 }

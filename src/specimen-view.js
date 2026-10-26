@@ -2,6 +2,8 @@ import { api, specimenFile } from './api.js';
 import { icon } from './icons.js';
 import { escape, usedSliders, hasPrintModel } from './specimen-format.js';
 import { mountViewer } from './viewer.js';
+import { cadIsStale } from '../shared/specimen-assets.mjs';
+import { renderSpecimenActions, setSpecimenActionsBusy, renderImageReview } from './specimen-actions.js';
 
 const note = (title, text) => `<div class="note"><h3>${title}</h3><p>${escape(text)}</p></div>`;
 
@@ -12,6 +14,10 @@ function setPrintActions(byId, specimen) {
   for (const [id, name] of [['stl-download', 'model.stl'], ['cad-download', 'model.scad']]) {
     if (available) byId(id).href = specimenFile(specimen, name, true); else byId(id).removeAttribute('href');
   }
+  const stale = available && cadIsStale(specimen);
+  byId('model-downloads').classList.toggle('stale-model', stale);
+  byId('model-downloads').querySelector('h3').textContent = stale ? 'Print files · out of date' : 'Print files';
+  byId('print-caption').textContent = stale ? `These files approximate portrait v${specimen.print.sourcePortraitVersion ?? 1} and are out of date. Regenerate CAD for the current portrait; inspect supports in your slicer.` : 'CAD approximates the current portrait. Inspect the model and supports in your slicer before printing.';
   const print = specimen?.print;
   byId('print-info').innerHTML = available ? `<span>${icon('check',14)} Closed, single solid</span><span>${print.dimensions.map(escape).join(' × ')} mm</span><span>${print.triangles.toLocaleString()} triangles</span>${print.minFeatureDiameterMm ? `<span>Thinnest feature ${escape(print.minFeatureDiameterMm)} mm</span>` : ''}${print.overhangPct !== undefined ? `<span>${escape(Math.round(print.overhangPct))}% overhang</span>` : ''}` : '';
 }
@@ -23,6 +29,7 @@ function physicalNotes(biology) {
 
 function renderPendingView(byId) {
   setPrintActions(byId, null);
+  byId('specimen-actions').innerHTML = ''; byId('specimen-actions').classList.add('hidden');
   byId('portrait-tab').setAttribute('aria-selected', 'true');
   byId('model-tab').setAttribute('aria-selected', 'false');
   byId('reset-view').classList.add('hidden');
@@ -40,14 +47,30 @@ function renderFieldNotes(byId, specimen, activeJob, onPortrait, onReuse) {
     ${physicalNotes(specimen.biology)}
     ${note('Environment',specimen.habitat)}${note('Diet',specimen.diet)}${note('Courtship & biology',specimen.courtship)}${note('Threat assessment',specimen.danger)}
     <blockquote><span>FROM THE FIELD JOURNAL</span>“${escape(specimen.fieldNote)}”</blockquote>
-    <div class="notes-downloads">${specimen.image ? `<a href="${specimenFile(specimen,'portrait.png',true)}">${icon('download',14)} Save portrait</a>` : '<button id="retry-portrait">'+icon('sparkle',14)+' '+(specimen.demo ? 'Illustrate example' : 'Retry portrait')+'</button>'}<a href="${specimenFile(specimen,'record.json',true)}">${icon('download',14)} Field notes</a><button id="reuse-settings">${icon('reset',14)} Use these settings</button></div>
+    <div class="notes-downloads">${specimen.image ? `<a href="${specimenFile(specimen,'portrait.png',true)}">${icon('download',14)} Save portrait</a>` : '<button id="retry-portrait">'+icon('sparkle',14)+' '+(specimen.demo ? 'Illustrate example' : 'Retry portrait')+'</button>'}<a href="${specimenFile(specimen,'record.json',true)}">${icon('download',14)} Field notes</a>${specimen.latestTraceJobId ? `<a href="/api/specimens/${encodeURIComponent(specimen.id)}/trace?download=1" download>${icon('download',14)} Generation trace</a>` : ''}<button id="reuse-settings">${icon('reset',14)} New lifeform from settings</button></div>
+    ${renderImageReview(specimen.review)}
     ${specimen.imageError ? `<p class="inline-error">Portrait incomplete: ${escape(specimen.imageError)}</p>` : ''}`;
   if (byId('retry-portrait')) byId('retry-portrait').onclick = () => onPortrait(specimen);
   if (byId('retry-portrait')) byId('retry-portrait').disabled = activeJob;
-  byId('reuse-settings').onclick = () => onReuse({ ...specimen.settings, printModel: specimen.settings?.printModel ?? hasPrintModel(specimen) });
+  byId('reuse-settings').onclick = () => onReuse({ ...specimen.settings });
 }
 
-export function createSpecimenView(byId, { onPortrait, onReuse, onError }) {
+function renderPortrait(byId, specimen, { busy, onPortrait, isCurrent }) {
+  if (specimen.image) {
+    byId('visual').innerHTML = `<img class="portrait" src="${specimenFile(specimen,'portrait.png')}" alt="Generated portrait of ${escape(specimen.englishName)}"/>`;
+    byId('view-caption').textContent = '';
+    byId('visual').querySelector('img').onerror = () => {
+      if (isCurrent()) byId('visual').innerHTML = '<div class="loading-visual"><p>The portrait could not load. Reload to try again.</p></div>';
+    };
+    return;
+  }
+  byId('visual').innerHTML = `<div class="loading-visual">${icon('sparkle',40)}<h3>${busy ? 'Observing the lifeform…' : 'Portrait not yet generated'}</h3><p>The field notes are ready. Generate a portrait before requesting CAD.</p><button id="empty-portrait" class="button primary">${icon('sparkle')} ${busy ? 'Portrait in progress' : 'Generate portrait'}</button></div>`;
+  byId('empty-portrait').disabled = busy;
+  byId('empty-portrait').onclick = () => onPortrait(specimen, {});
+  byId('view-caption').textContent = 'PORTRAIT NOT YET GENERATED';
+}
+
+export function createSpecimenView(byId, { onPortrait, onCad, onReuse, onError }) {
   let activeJob = false;
   let selected = null;
   let tab = 'portrait';
@@ -64,21 +87,14 @@ export function createSpecimenView(byId, { onPortrait, onReuse, onError }) {
     byId('reset-view').classList.toggle('hidden', next !== 'model');
     if (!selected) return;
     const specimen = selected;
-    if (next === 'portrait' && specimen.image) {
-      byId('visual').innerHTML = `<img class="portrait" src="${specimenFile(specimen,'portrait.png')}" alt="Generated portrait of ${escape(specimen.englishName)}"/>`;
-      byId('view-caption').textContent = '';
-      byId('visual').querySelector('img').onerror = () => { if (token === viewToken) byId('visual').innerHTML = `<div class="loading-visual"><p>The portrait could not load. ${hasPrintModel(specimen) ? 'Try the 3D print tab or reload.' : 'Reload to try again.'}</p></div>`; };
-      return;
-    }
+    const ratio = specimen.settings?.aspectRatio ?? '1:1';
+    byId('visual').closest('.portrait-card').style.setProperty('--portrait-ratio', next === 'model' ? '1' : ratio.replace(':', '/'));
     if (next === 'portrait') {
-      byId('visual').innerHTML = `<div class="loading-visual">${icon('sparkle',40)}<h3>${activeJob ? 'Observing the lifeform…' : 'Portrait not yet generated'}</h3><p>${hasPrintModel(specimen) ? 'The field notes and print sculpture are ready.' : 'The field notes are ready.'}</p><button id="empty-portrait" class="button primary">${icon('sparkle')} ${activeJob ? 'Portrait in progress' : 'Generate portrait'}</button></div>`;
-      byId('empty-portrait').disabled = activeJob;
-      byId('empty-portrait').onclick = () => onPortrait(specimen);
-      byId('view-caption').textContent = 'ARTWORK NOT YET GENERATED';
+      renderPortrait(byId, specimen, { busy: activeJob, onPortrait, isCurrent: () => token === viewToken });
       return;
     }
     byId('visual').innerHTML = '<div class="loading-visual"><span class="spinner"></span><p>Loading the print sculpture…</p></div>';
-    byId('view-caption').textContent = 'ACTUAL PRINT GEOMETRY · DRAG TO ROTATE · SCROLL TO ZOOM';
+    byId('view-caption').textContent = cadIsStale(specimen) ? 'OUT-OF-DATE MODEL · DRAG TO ROTATE · SCROLL TO ZOOM' : 'PRINT GEOMETRY · DRAG TO ROTATE · SCROLL TO ZOOM';
     try {
       const mesh = await api(specimenFile(specimen,'mesh.json'));
       if (token !== viewToken) return;
@@ -94,9 +110,10 @@ export function createSpecimenView(byId, { onPortrait, onReuse, onError }) {
 
   async function select(specimen, specimens) {
     selected = specimen;
-    byId('specimen-tag').textContent = specimen.demo ? 'EXAMPLE / SCULPTURE' : `SPECIMEN / ${String(specimens.filter(item => !item.demo).length - specimens.findIndex(item => item.id === specimen.id)).padStart(3,'0')}`;
+    byId('specimen-tag').textContent = specimen.demo ? 'EXAMPLE / SPECIMEN' : `SPECIMEN / ${String(specimens.filter(item => !item.demo).length - specimens.findIndex(item => item.id === specimen.id)).padStart(3,'0')}`;
     setPrintActions(byId, specimen);
     renderFieldNotes(byId, specimen, activeJob, onPortrait, onReuse);
+    renderSpecimenActions(byId, specimen, { busy: activeJob, onPortrait, onCad });
     await showView(!specimen.image && hasPrintModel(specimen) ? 'model' : tab);
   }
 
@@ -107,9 +124,10 @@ export function createSpecimenView(byId, { onPortrait, onReuse, onError }) {
     get selectedId() { return selected?.id; },
     select,
     resetToPortrait() { tab = 'portrait'; },
+    preferModel() { tab = 'model'; },
     selectPortrait(specimen, specimens) { tab = 'portrait'; return select(specimen, specimens); },
     setBusy(value) {
-      activeJob = value;
+      activeJob = value; setSpecimenActionsBusy(byId, value);
       for (const id of ['retry-portrait', 'empty-portrait']) if (byId(id)) byId(id).disabled = value;
     },
     showPending(job, title) {

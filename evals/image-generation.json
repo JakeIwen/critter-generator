@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "description": "Manual live evaluation corpus. Keep visual fidelity, ecological invention, subjective appearance and operational reliability separate.",
+  "cases": [
+    {
+      "id": "cat-invent",
+      "kind": "generation",
+      "seed": "evaluation-cat-v1",
+      "settings": { "prompt": "cat", "intent": "invent" },
+      "criteria": [
+        { "id": "feline-inspiration", "label": "At least one visible structural or behavioral cue relates to feline inspiration." },
+        { "id": "speculative-species", "label": "The result presents a coherent invented animal rather than only recoloring an ordinary cat." },
+        { "id": "ecological-scene", "label": "Visible habitat and activity agree with the saved biology and field note." }
+      ]
+    },
+    {
+      "id": "cat-literal",
+      "kind": "generation",
+      "seed": "evaluation-cat-v1",
+      "settings": { "prompt": "cat", "intent": "literal" },
+      "criteria": [
+        { "id": "recognizable-cat", "label": "The subject is recognizable as a cat." },
+        { "id": "no-unrequested-hybrid", "label": "No unrelated animal lineage or radical body transformation has been introduced." }
+      ]
+    },
+    {
+      "id": "tidal-cat",
+      "kind": "generation",
+      "seed": "evaluation-tidal-cat-v1",
+      "settings": {
+        "prompt": "A cat-inspired animal with exactly four legs, two ears and one long tail. It has matte black fur with a single white ring around its tail. Show it hunting small crabs among wet tidal rocks, in a square wildlife photograph. No horns, wings or extra limbs.",
+        "requiredFeatures": ["Exactly four legs, two ears and one long tail", "Matte black fur with one white tail ring", "Hunting small crabs among wet tidal rocks"],
+        "review": true,
+        "excludedFeatures": ["Horns", "Wings or structures that visually resemble wings", "Extra limbs"]
+      },
+      "criteria": [
+        { "id": "appendage-count", "label": "Four legs, two ears and one tail; mark unscorable if occlusion prevents an exact count." },
+        { "id": "fur-and-ring", "label": "Matte black fur and exactly one white tail ring are visible." },
+        { "id": "crab-hunt", "label": "The animal visibly hunts small crabs among wet tidal rocks." },
+        { "id": "no-wings", "label": "No wings or visually equivalent membranes, horns or extra limbs are visible." }
+      ]
+    },
+    {
+      "id": "no-legs",
+      "kind": "generation",
+      "seed": "evaluation-no-legs-v1",
+      "settings": {
+        "prompt": "An elongated translucent animal swims through a cold kelp forest using gentle fin waves. No walking legs, feet or standing pose.",
+        "legless": true,
+        "excludedFeatures": ["Walking legs", "Feet", "Standing on a ground plane"]
+      },
+      "criteria": [
+        { "id": "legless", "label": "The visible organism has no walking legs or feet; fins and sensory threads are not legs." },
+        { "id": "swimming", "label": "The pose and environmental contact support swimming rather than standing." },
+        { "id": "biology-agreement", "label": "The saved biology, zero leg count and visible locomotion agree." }
+      ]
+    },
+    {
+      "id": "full-body-reference",
+      "kind": "generation",
+      "seed": "evaluation-reference-v1",
+      "settings": {
+        "prompt": "An ordinary red fox in strict side view. Show its entire body, four legs, two ears and one tail, unobscured and fully inside the frame.",
+        "intent": "literal", "compositionMode": "reference",
+        "requiredFeatures": ["Entire animal inside the frame", "Unobscured anatomy in strict side view"],
+        "excludedFeatures": ["Foreground occlusion", "Cropped ears, feet or tail"]
+      },
+      "criteria": [
+        { "id": "full-silhouette", "label": "The full fox silhouette, including ears, feet and tail, is inside the frame." },
+        { "id": "no-occlusion", "label": "Foreground objects do not obscure the organism." },
+        { "id": "side-view", "label": "The subject is shown in side view with assessable anatomy." }
+      ]
+    },
+    {
+      "id": "transparent-cutout",
+      "kind": "generation",
+      "seed": "evaluation-cutout-v1",
+      "settings": {
+        "prompt": "An ordinary black cat in side view, standing with its full body and tail visible. Isolate the animal on a transparent background.",
+        "intent": "literal", "compositionMode": "cutout",
+        "excludedFeatures": ["Habitat", "Backdrop", "Display base"]
+      },
+      "criteria": [
+        { "id": "true-transparency", "label": "The downloaded PNG has actual transparent background pixels, not a painted checkerboard." },
+        { "id": "complete-cutout", "label": "The whole animal is visible without clipping or habitat objects." }
+      ]
+    },
+    {
+      "id": "portrait-aspect",
+      "kind": "generation",
+      "seed": "evaluation-aspect-v1",
+      "settings": {
+        "prompt": "An ordinary barn owl perched upright on one short branch. Keep the entire bird in the frame in a portrait composition.",
+        "intent": "literal", "compositionMode": "reference", "aspectRatio": "2:3"
+      },
+      "criteria": [
+        { "id": "aspect-ratio", "label": "The output dimensions are portrait 2:3, allowing only minor rounding." },
+        { "id": "whole-subject", "label": "The entire owl fits inside the portrait frame." }
+      ]
+    },
+    {
+      "id": "targeted-edit",
+      "kind": "edit",
+      "sourceCase": "tidal-cat",
+      "instructions": "Change only the black fur to rust-orange. Preserve the single white tail ring, pose, crab positions, rocks, water, lighting and framing. Keep exactly four legs, two ears and one tail, with no horns, wings or extra limbs.",
+      "criteria": [
+        { "id": "requested-color", "label": "The fur has changed from black to rust-orange while the single white tail ring remains." },
+        { "id": "composition-preserved", "label": "The main pose, crab positions, rocks, water, lighting and framing remain visually consistent with the source." },
+        { "id": "identity-preserved", "label": "The organism identity and anatomy remain consistent; no new appendages appear." }
+      ]
+    }
+  ]
+}

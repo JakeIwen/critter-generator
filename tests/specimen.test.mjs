@@ -1,17 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { example, Anatomy, Specimen, GenerationSpecimen, specimenSchema, Settings, creaturePrompt, illustrationPrompt } from '../shared/specimen.mjs';
+import { example, Anatomy, Specimen, GenerationAnatomy, GenerationSpecimen, specimenSchema, Settings, creaturePrompt, illustrationPrompt } from '../shared/specimen.mjs';
 
-test('new generation schema prevents tall legs while preserving historical records', () => {
+test('CAD anatomy validation remains separate from image-first organism generation', () => {
   assert(Specimen.safeParse(example).success, 'Saved legacy anatomy is still readable');
-  assert(!GenerationSpecimen.safeParse(example).success, 'New output must satisfy the shorter leg limit');
-  assert(GenerationSpecimen.safeParse({...example,anatomy:{...Anatomy.parse(example.anatomy),legLength:3}}).success);
-  assert.equal(specimenSchema.properties.anatomy.properties.legLength.maximum,6);
+  assert(!GenerationAnatomy.safeParse(example.anatomy).success, 'New CAD must satisfy the shorter leg limit');
+  assert(GenerationAnatomy.safeParse({ ...Anatomy.parse(example.anatomy), legLength: 3 }).success);
+  assert(!GenerationSpecimen.safeParse(example).success, 'New designs contain no CAD recipe');
+  assert.equal(specimenSchema.properties.anatomy.type, 'null');
 });
 test('femme and psychedelic are validated, optional for older clients, and reach both prompts', () => {
   const base = { prompt: '', absurdity: 50, deviancy: 10, lethality: 20, height: 100 };
-  assert.deepEqual(Settings.parse(base), { ...base, femme: 0, psychedelic: 0, baseplate: true,
-    printModel: true, animalTypes: [], legless: false });
+  const legacy = Settings.parse(base);
+  assert.equal(legacy.femme, 0); assert.equal(legacy.psychedelic, 0);
+  assert.equal(legacy.printModel, false); assert.equal(legacy.intent, 'invent');
   assert(!Settings.safeParse({ ...base, femme: 101 }).success);
   assert(!Settings.safeParse({ ...base, psychedelic: -1 }).success);
   const settings = Settings.parse({ ...base, femme: 90, psychedelic: 95 });
@@ -29,13 +31,14 @@ test('print settings accept 500 mm and optional baseplates with legacy defaults'
   assert(!Settings.safeParse({ ...base, baseplate: 'false' }).success);
 });
 
-test('animal selection, legless and optional printing are validated without changing legacy defaults', () => {
+test('animal selection and legacy print fields remain readable while new forms are image-first', () => {
   const base = { absurdity: 80, deviancy: 40, lethality: 30, height: 100 };
   const settings = Settings.parse({ ...base, printModel: false, animalTypes: ['birds', 'cephalopods'], legless: true });
   assert.equal(settings.printModel, false);
   assert.equal(settings.legless, true);
   assert.deepEqual(settings.animalTypes, ['birds', 'cephalopods']);
-  assert.equal(Settings.parse(base).printModel, true);
+  assert.equal(Settings.parse(base).printModel, false);
+  assert.equal(Settings.parse({ ...base, printModel: true }).printModel, true);
   for (const values of [{ printModel: 'false' }, { legless: 1 }, { animalTypes: ['unknown'] },
     { animalTypes: ['birds', 'birds'] }, { animalTypes: 'birds' }]) {
     assert.equal(Settings.safeParse({ ...base, ...values }).success, false);
@@ -102,4 +105,57 @@ test('full biology isolates the image from simplified CAD proportions while pres
   assert(!prompt.includes(JSON.stringify(first.anatomy)));
   const { biology, ...legacy } = first;
   assert(illustrationPrompt(legacy).includes(JSON.stringify(first.anatomy)), 'Records predating biology still retain their physical description');
+});
+
+test('generation controls validate options and accept image-only requests without print controls', () => {
+  const base = { absurdity: 30, deviancy: 10, lethality: 20 };
+  const settings = Settings.parse({ ...base, intent: 'literal', compositionMode: 'reference', aspectRatio: '3:2',
+    directionLocks: { viewpoint: 'rear' }, requiredFeatures: ['  black fur '], excludedFeatures: ['wings'], review: true });
+  assert.equal(settings.height, 100); assert.equal(settings.printModel, false);
+  assert.deepEqual(settings.requiredFeatures, ['black fur']);
+  assert.deepEqual(settings.directionLocks, { viewpoint: 'rear', encounter: null, silhouette: null, inspirations: false });
+  for (const values of [{ intent: 'unknown' }, { compositionMode: 'poster' }, { aspectRatio: '100:1' },
+    { directionLocks: { viewpoint: 'anything' } }, { requiredFeatures: [''] }, { excludedFeatures: [1] },
+    { review: 'yes' }, { requiredFeatures: Array(21).fill('something') }]) {
+    assert.equal(Settings.safeParse({ ...base, ...values }).success, false);
+  }
+});
+
+test('reference and cutout modes preserve full anatomy without wildlife occlusion instructions', () => {
+  for (const compositionMode of ['reference', 'cutout']) {
+    const settings = Settings.parse({ absurdity: 20, deviancy: 10, lethality: 10, compositionMode, aspectRatio: '2:3' });
+    const prompt = illustrationPrompt({ ...example, anatomy: null, settings,
+      variation: { portrait: { viewpoint: 'rear', encounter: 'feeding', composition: 'screen' } } });
+    assert.match(prompt, /complete, unobscured/i);
+    assert.match(prompt, /Output aspect ratio: 2:3/);
+    assert.match(prompt, /Camera direction: rear/);
+    assert.doesNotMatch(prompt, /foreground elements naturally obscure|at least three concrete visual anchors|VIEWPOINT: View from behind/i);
+    if (compositionMode === 'cutout') assert.match(prompt, /true background transparency/);
+  }
+});
+
+test('targeted edit and regenerated portraits use the attached image without forcing a new scene', () => {
+  const specimen = { ...example, settings: { prompt: 'black fur', aspectRatio: '1:1' } };
+  const prompt = illustrationPrompt(specimen, { referenceImage: true, editInstructions: 'Change only the fur to orange.' });
+  assert.match(prompt, /Edit the attached existing portrait/);
+  assert.match(prompt, /Change only the fur to orange/);
+  assert.match(prompt, /Preserve the attached organism's identity, pose, composition/);
+  assert.match(prompt, /overrides earlier color or appearance requirements only where they conflict/);
+  assert.doesNotMatch(prompt, /FIELD-NOTE EVIDENCE|COMPOSITION:/);
+  const regenerated = illustrationPrompt(specimen, { referenceImage: true });
+  assert.match(regenerated, /new portrait of the same attached organism/);
+  assert.match(regenerated, /do not revert them to older descriptive text/);
+});
+
+test('accepted edit history carries forward without rewriting original biology or input text', () => {
+  const specimen = { ...example, settings: { prompt: 'A black animal.' },
+    portraitEdits: [{ version: 2, instructions: 'Change only the fur to orange.' }, { version: 3, instructions: 'Make the tail ring blue.' }] };
+  const before = structuredClone(specimen);
+  const prompt = illustrationPrompt(specimen, { referenceImage: true });
+  assert.match(prompt, /ACCEPTED PORTRAIT EDIT HISTORY/);
+  assert.match(prompt, /Change only the fur to orange/); assert.match(prompt, /Make the tail ring blue/);
+  assert(prompt.indexOf('Change only the fur to orange') < prompt.indexOf('Make the tail ring blue'));
+  assert.match(prompt, /Newer accepted edits override older edits and the original appearance requirements/);
+  assert(prompt.includes(specimen.settings.prompt));
+  assert.deepEqual(specimen, before);
 });

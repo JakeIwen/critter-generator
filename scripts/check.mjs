@@ -3,6 +3,8 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { Store } from '../server/store.mjs';
+import { example } from '../shared/specimen.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const scratch = await mkdtemp(path.join(tmpdir(), 'critter-check-'));
@@ -63,6 +65,19 @@ async function stopServer(child) {
     if (!await waitForExit(5_000)) throw new Error('isolated server did not exit after SIGKILL');
   }
 }
+async function seedDownloadFixtures() {
+  const store = new Store(path.join(scratch, 'data'));
+  try {
+    const id = 'verification-model';
+    const specimen = { ...example, id, demo: true, image: true, print: null,
+      settings: { prompt: '', absurdity: 65, deviancy: 35, lethality: 20, height: 100 },
+      createdAt: '2025-01-01T00:00:00.000Z' };
+    store.save('specimens', id, specimen);
+    store.portrait(id, await readFile(path.join(root, 'server/assets/example-lantern-portrait.png')));
+    const print = await store.model(id, example.anatomy, 100, true, { sourcePortraitVersion: 1 });
+    store.save('specimens', id, { ...specimen, print });
+  } finally { store.db.close(); }
+}
 try {
   const tests = (await readdir(path.join(root, 'tests')))
     .filter(name => name.endsWith('.test.mjs'))
@@ -71,6 +86,7 @@ try {
   if (!tests.length) throw new Error('no unit tests found');
   await run(process.execPath, ['--test', ...tests]);
   await run(path.join(root, 'node_modules/.bin/vite'), ['build', '--outDir', path.join(scratch, 'dist'), '--emptyOutDir']);
+  await seedDownloadFixtures();
   const port = await availablePort();
   const env = { ...process.env, ...await offlineCodexEnvironment(), PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data'), CRITTER_DIST_DIR: path.join(scratch, 'dist') };
   server = spawn(process.execPath, ['server/index.mjs'], { cwd: root, env, stdio: 'inherit' });

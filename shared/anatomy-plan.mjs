@@ -1,11 +1,24 @@
 import { z } from 'zod';
-import { Biology, GenerationAnatomy, GenerationSpecimen, creaturePrompt } from './specimen.mjs';
-import { bodyPlans, shapeRanges } from './body-plans.mjs';
-import { animalTypes, animalTypeById } from './animal-types.mjs';
+import { Biology, GenerationSpecimen, creaturePrompt } from './specimen.mjs';
+import { animalTypes, animalTypeIds, animalTypeById } from './animal-types.mjs';
 import { viewpoints, encounters, compositions, biologicalSilhouettes, biologicalChallenges } from './encounter-directions.mjs';
+import { createVisualRequirements, InputVisualFeatures, VisualRequirements } from './visual-requirements.mjs';
 
 const HISTORY_SIZE = 18;
-export const ANATOMY_PLAN_VERSION = 3;
+export const ANATOMY_PLAN_VERSION = 4;
+const optionalChoice = choices => z.enum(Object.keys(choices)).nullable();
+export const AnatomyPlan = z.object({
+  version: z.literal(ANATOMY_PLAN_VERSION),
+  seed: z.string().min(1).max(100),
+  inspirationIds: z.array(z.enum(animalTypeIds)).max(3).refine(ids => new Set(ids).size === ids.length),
+  portrait: z.object({
+    viewpoint: optionalChoice(viewpoints), encounter: optionalChoice(encounters), composition: optionalChoice(compositions),
+  }).strict(),
+  silhouette: optionalChoice(biologicalSilhouettes),
+  challenge: z.enum(biologicalChallenges).nullable(),
+  family: z.null(),
+  anatomy: z.null(),
+}).strict();
 
 function seededRandom(seed) {
   let state = 2166136261;
@@ -27,97 +40,88 @@ function balancedChoice(options, used, random) {
   return choices[Math.floor(random() * choices.length)];
 }
 
-function familyOf(specimen) {
-  const axes = ['bodyLength', 'bodyWidth', 'bodyHeight'];
-  const plan = specimen.variation;
-  if (Object.hasOwn(bodyPlans, plan?.family) && axes.every(key => specimen.anatomy[key] === plan.anatomy?.[key])) return plan.family;
-  // Historical specimens have no plan metadata; their torso proportions still count.
-  const distance = ranges => axes.reduce((sum, key) => {
-    const midpoint = (ranges[key][0] + ranges[key][1]) / 2;
-    return sum + ((specimen.anatomy[key] - midpoint) / midpoint) ** 2;
-  }, 0);
-  return Object.keys(bodyPlans).sort((a, b) => distance(bodyPlans[a]) - distance(bodyPlans[b]))[0];
-}
-
 function selectInspirations(settings, recent, random) {
   const selected = settings.animalTypes ?? [];
+  if (settings.directionLocks?.inspirations) return [...selected];
+  if (settings.intent === 'literal' && settings.prompt?.trim() && !selected.length) return [];
   const pool = selected.length ? selected : animalTypes.map(type => type.id);
   const count = Math.min(pool.length, [1, 1, 2, 2, 3][Math.floor(random() * 5)]);
   const used = recent.flatMap(item => item.variation?.inspirationIds ?? []);
   const ids = [];
   for (let index = 0; index < count; index++) {
-    // Unrestricted rolls always start from real animal biology; fictional-only selections are valid.
+    // Unrestricted rolls start from real animal biology; fictional-only selections remain valid.
     const options = pool.filter(id => !ids.includes(id) && (selected.length || index > 0 || !animalTypeById[id].fictional));
     ids.push(balancedChoice(options, used, random));
   }
   return ids;
 }
 
-function samplePrintAnatomy(settings, family, inspirationIds, recent, random) {
-  const range = ([min, max]) => Math.round((min + random() * (max - min)) * 100) / 100;
-  const choose = (key, max) => balancedChoice(Array.from({ length: max + 1 }, (_, i) => i),
-    recent.map(item => item.anatomy[key]), random);
-  const legOptions = [...new Set(inspirationIds.flatMap(id => animalTypeById[id].legPairs))];
-  const eyes = balancedChoice(settings.absurdity < 30 ? [1, 2, 3] : [1, 2, 3, 4, 5, 6],
-    recent.map(item => item.anatomy.eyes), random);
-  const anatomy = {
-    ...Object.fromEntries(Object.entries({ ...bodyPlans[family], ...shapeRanges }).map(([key, bounds]) => [key, range(bounds)])),
-    legPairs: settings.legless ? 0 : balancedChoice(legOptions, recent.map(item => item.anatomy.legPairs), random), eyes,
-    horns: choose('horns', settings.lethality < 35 ? 2 : 6),
-    antennae: choose('antennae', settings.absurdity < 30 ? 2 : 4),
-    backPlates: choose('backPlates', 8),
-    tailLength: balancedChoice([0, 6, 16, 28], recent.map(item => item.anatomy.tailLength), random),
-    texture: balancedChoice(['smooth', 'speckled', 'ridged'], recent.map(item => item.anatomy.texture), random),
-  };
-  if (!anatomy.legPairs) anatomy.legLength = 0;
-  return anatomy;
-}
-
 export function createAnatomyPlan(settings, seed, specimens = []) {
   const random = seededRandom(seed);
   const recent = specimens.filter(item => !item.demo).slice(0, HISTORY_SIZE);
+  const literal = settings.intent === 'literal' && Boolean(settings.prompt?.trim());
+  const wildlife = (settings.compositionMode ?? 'wildlife') === 'wildlife';
+  const locks = settings.directionLocks ?? {};
   const inspirationIds = selectInspirations(settings, recent, random);
   const previousView = recent.find(item => item.variation?.portrait?.viewpoint)?.variation.portrait.viewpoint;
   const portrait = {
-    viewpoint: balancedChoice(Object.keys(viewpoints).filter(id => id !== previousView),
-      recent.map(item => item.variation?.portrait?.viewpoint), random),
-    encounter: balancedChoice(Object.keys(encounters), recent.map(item => item.variation?.portrait?.encounter), random),
-    composition: balancedChoice(Object.keys(compositions), recent.map(item => item.variation?.portrait?.composition), random),
+    viewpoint: locks.viewpoint ?? (literal ? null : balancedChoice(Object.keys(viewpoints).filter(id => id !== previousView),
+      recent.map(item => item.variation?.portrait?.viewpoint), random)),
+    encounter: locks.encounter ?? (!wildlife || literal ? null : balancedChoice(Object.keys(encounters),
+      recent.map(item => item.variation?.portrait?.encounter), random)),
+    composition: wildlife ? balancedChoice(Object.keys(compositions), recent.map(item => item.variation?.portrait?.composition), random) : null,
   };
-  const silhouette = balancedChoice(Object.keys(biologicalSilhouettes), recent.map(item => item.variation?.silhouette), random);
-  const challenge = balancedChoice(biologicalChallenges, recent.map(item => item.variation?.challenge), random);
-  const printed = recent.filter(item => item.anatomy);
-  const family = settings.printModel === false ? null : balancedChoice(Object.keys(bodyPlans), printed.map(familyOf), random);
-  const anatomy = family ? samplePrintAnatomy(settings, family, inspirationIds, printed, random) : null;
-  return { version: ANATOMY_PLAN_VERSION, seed: String(seed), inspirationIds, portrait, silhouette, challenge, family, anatomy };
+  const silhouette = locks.silhouette ?? (literal ? null : balancedChoice(Object.keys(biologicalSilhouettes),
+    recent.map(item => item.variation?.silhouette), random));
+  const challenge = literal ? null : balancedChoice(biologicalChallenges, recent.map(item => item.variation?.challenge), random);
+  return AnatomyPlan.parse({ version: ANATOMY_PLAN_VERSION, seed: String(seed), inspirationIds, portrait, silhouette, challenge, family: null, anatomy: null });
+}
+
+export function isPlanCompatible(settings, value) {
+  const result = AnatomyPlan.safeParse(value);
+  if (!result.success) return false;
+  const plan = result.data, locks = settings.directionLocks ?? {}, selected = settings.animalTypes ?? [];
+  if (selected.length && plan.inspirationIds.some(id => !selected.includes(id))) return false;
+  if (locks.inspirations && (plan.inspirationIds.length !== selected.length || selected.some(id => !plan.inspirationIds.includes(id)))) return false;
+  for (const key of ['viewpoint', 'encounter']) if (locks[key] && plan.portrait[key] !== locks[key]) return false;
+  if (locks.silhouette && plan.silhouette !== locks.silhouette) return false;
+  if ((settings.compositionMode ?? 'wildlife') !== 'wildlife' && plan.portrait.composition !== null) return false;
+  if (settings.intent === 'literal' && settings.prompt?.trim()) {
+    if (!selected.length && plan.inspirationIds.length) return false;
+    if ((!locks.silhouette && plan.silhouette) || plan.challenge) return false;
+    if ((!locks.viewpoint && plan.portrait.viewpoint) || (!locks.encounter && plan.portrait.encounter)) return false;
+  }
+  return true;
+}
+
+export function parseAnatomyPlan(value, settings) {
+  const plan = AnatomyPlan.parse(value);
+  if (settings && !isPlanCompatible(settings, plan)) throw new Error('Preview directions no longer match these settings. Preview them again.');
+  return plan;
+}
+
+export function generationOutputSchema(validation) {
+  const schema = z.toJSONSchema(validation, { target: 'draft-7' });
+  delete schema.$schema;
+  const replaceConstants = value => {
+    if (!value || typeof value !== 'object') return;
+    if (Object.hasOwn(value, 'const')) { value.enum = [value.const]; delete value.const; }
+    for (const child of Object.values(value)) replaceConstants(child);
+  };
+  replaceConstants(schema);
+  return schema;
 }
 
 export function plannedDesign(settings, plan) {
-  // Empty-text requests cannot collapse back to the model's favourite anatomy.
-  // Free text may specify physical constraints, so it retains the full safe range.
-  const printModel = settings.printModel !== false;
-  let anatomy = z.null();
-  let biology = Biology;
-  if (printModel) {
-    anatomy = settings.prompt?.trim() ? GenerationAnatomy : GenerationAnatomy.extend(
-      Object.fromEntries(Object.entries(plan.anatomy).map(([key, value]) => [key, z.literal(value)])));
-    if (!settings.prompt?.trim()) biology = biology.extend({ legCount: z.literal(plan.anatomy.legPairs * 2) });
-    if (settings.legless) anatomy = anatomy.extend({ legPairs: z.literal(0), legLength: z.literal(0) });
-  }
-  if (settings.legless) biology = biology.extend({ legCount: z.literal(0) });
-  const validation = GenerationSpecimen.extend({ anatomy, biology });
-  const schema = z.toJSONSchema(validation, { target: 'draft-7' });
-  delete schema.$schema;
-  for (const group of ['anatomy', 'biology']) {
-    for (const field of Object.values(schema.properties[group].properties ?? {})) {
-      if (Object.hasOwn(field, 'const')) { field.enum = [field.const]; delete field.const; }
-    }
-  }
-  return { prompt: creaturePrompt(settings, plan), schema, parse: data => {
-    const parsed = validation.parse(data);
-    if (parsed.anatomy && parsed.biology.legCount !== parsed.anatomy.legPairs * 2) {
-      throw new Error('Biology and simplified print anatomy disagree on leg count.');
-    }
-    return parsed;
-  } };
+  const biology = settings.legless ? Biology.extend({ legCount: z.literal(0) }) : Biology;
+  const requirements = VisualRequirements.extend({ originalPrompt: z.literal(settings.prompt ?? ''),
+    required: InputVisualFeatures, excluded: InputVisualFeatures });
+  const validation = GenerationSpecimen.extend({ biology, visualRequirements: requirements });
+  return {
+    prompt: creaturePrompt(settings, plan), schema: generationOutputSchema(validation),
+    parse(data) {
+      const parsed = validation.parse(data);
+      return { ...parsed, visualRequirements: createVisualRequirements(settings, parsed.visualRequirements) };
+    },
+  };
 }

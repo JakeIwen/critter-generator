@@ -1,6 +1,6 @@
 export const DEFAULT_ESTIMATE_MS = 130_000;
 export const TIMING_WINDOW = 10;
-export const JOB_KINDS = Object.freeze({ GENERATION: 'generation', PORTRAIT: 'portrait' });
+export const JOB_KINDS = Object.freeze({ GENERATION: 'generation', PORTRAIT: 'portrait', CAD: 'cad' });
 
 export function completedGenerationDuration(job) {
   const fullGeneration = job.kind === JOB_KINDS.GENERATION ||

@@ -1,5 +1,5 @@
 import { sliders } from '../shared/sliders.mjs';
-import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
+import { generationDirectionsMarkup } from './generation-directions.js';
 import { animalTypes } from '../shared/animal-types.mjs';
 import { icon } from './icons.js';
 import { escape } from './specimen-format.js';
@@ -9,7 +9,7 @@ function slider({ id, name, initial: value, low, high, hint }) {
 }
 
 function animalChoices() {
-  return `<fieldset class="animal-choices"><legend>Animal inspiration <span class="info-hint" tabindex="0" role="img" aria-label="Choose any mix. Each generation draws one to three groups from your selection; Any animal draws from all groups." title="Choose any mix. Each generation draws one to three groups from your selection; Any animal draws from all groups.">?</span></legend>
+  return `<fieldset class="animal-choices"><legend>Animal inspiration <span class="info-hint" tabindex="0" role="img" aria-label="Choose an inspiration pool. Surprise me draws one to three groups; direction controls can keep an exact selection. Follow my description gives your text priority." title="Choose an inspiration pool. Surprise me draws one to three groups; direction controls can keep an exact selection. Follow my description gives your text priority.">?</span></legend>
     <div class="animal-chips"><button id="any-animal" class="animal-chip" type="button" aria-pressed="true">Any animal</button>${animalTypes.map(type => `<button class="animal-chip${type.fictional ? ' fictional-animal' : ''}" type="button" data-animal-type="${type.id}" aria-pressed="false" title="${escape(type.fictional ? `Fictional inspiration: ${type.traits}` : type.traits)}">${escape(type.label)}${type.fictional ? '<span aria-label="fictional">✦</span>' : ''}</button>`).join('')}</div>
     <label class="feature-control" for="legless"><input id="legless" type="checkbox"/> No legs <span class="info-hint" title="Require a legless lifeform. Fins, wings, tentacles and other forms of movement can still occur.">?</span></label>
   </fieldset>`;
@@ -34,28 +34,23 @@ export function renderStudio(root) {
           <div class="sliders">
             ${sliders.map(slider).join('')}
           </div>
-          <label class="feature-control print-toggle" for="print-model"><input id="print-model" type="checkbox"/> 3D Print / CAD <span class="info-hint" title="Include a simplified print sculpture. It cannot reproduce every feature of the animal; the image follows its full biology.">?</span></label>
-          <fieldset id="print-settings" class="print-settings hidden" disabled>
-            <legend class="sr-only">Print settings</legend>
-            <div class="height-control"><label for="height">${icon('cube',16)} Print height</label><div><input id="height" type="number" value="${PRINT_HEIGHT.initial}" min="${PRINT_HEIGHT.min}" max="${PRINT_HEIGHT.max}" step="1" required aria-label="Print height in millimeters"/><span>mm</span></div></div>
-            <p class="micro">${PRINT_HEIGHT.min}–${PRINT_HEIGHT.max} mm · total model height</p>
-            <label class="baseplate-control" for="baseplate"><input id="baseplate" type="checkbox" checked/> Include baseplate</label>
-          </fieldset>
-          <button id="generate" class="button primary" type="submit">${icon('sparkle')} Generate lifeform ${icon('arrow')}</button>
+          ${generationDirectionsMarkup()}
+          <button id="generate" class="button primary" type="submit" title="Generate field notes and a portrait. Request CAD after the portrait is ready.">${icon('sparkle')} Generate lifeform ${icon('arrow')}</button>
           <p id="generation-estimate" class="generation-note"></p>
         </form>
         <div class="presets"><span class="eyebrow">NEED A NUDGE?</span><button data-preset="gentle">Oddly plausible <span>↗</span></button><button data-preset="weird">Nature’s mistake <span>↗</span></button><button data-preset="danger">Absolute menace <span>↗</span></button></div>
       </aside>
-      <section class="specimen-stage" aria-label="Specimen artwork and printable model">
+      <section class="specimen-stage" aria-label="Specimen portrait and on-demand CAD">
         <div id="status-box" class="status-box hidden"><div class="status-header"><div role="status" aria-live="polite"><strong id="status-title">Discovering a new species</strong><p id="status-message"></p></div><button id="cancel">Cancel</button></div><progress id="status-progress" max="100" value="0" aria-label="Estimated generation progress"></progress><p id="status-estimate" class="status-estimate"></p></div>
         <div class="portrait-card">
-          <div class="stage-top"><span class="specimen-tag" id="specimen-tag">SPECIMEN / 001</span><div class="view-tabs" role="tablist" aria-label="Specimen view"><button id="portrait-tab" role="tab" aria-selected="true">Portrait</button><button id="model-tab" role="tab" aria-selected="false" title="Simplified printable interpretation">${icon('cube',14)} 3D Print/CAD</button></div></div>
+          <div class="stage-top"><span class="specimen-tag" id="specimen-tag">SPECIMEN / 001</span><div class="view-tabs" role="tablist" aria-label="Specimen view"><button id="portrait-tab" role="tab" aria-selected="true">Portrait</button><button id="model-tab" role="tab" aria-selected="false" title="Simplified printable interpretation">${icon('cube',14)} 3D model</button></div></div>
           <div id="visual" class="visual"><div class="loading-visual"><span class="spinner"></span><p>Opening the cabinet…</p></div></div>
           <div class="stage-bottom"><span id="view-caption">A NEW SPECIES AWAITS</span><button id="reset-view" title="Reset the model camera" class="hidden">${icon('reset',16)} Reset view</button></div>
         </div>
+        <div id="specimen-actions"></div>
         <div id="model-downloads" class="download-card card"><div><h3>Print files</h3></div><div class="download-actions"><a id="stl-download" class="button primary" aria-label="Download printable STL">${icon('download')} STL</a><a id="cad-download" class="button secondary" aria-label="Download editable OpenSCAD CAD source">${icon('cube')} CAD source</a></div></div>
         <div id="print-info" class="print-info"></div>
-        <p id="print-caption" class="print-caption">Simplified printable interpretation. Wings, fins and other details may be approximated. Check the model and supports in your slicer.</p>
+        <p id="print-caption" class="print-caption">CAD approximates the current portrait. Inspect the model and supports in your slicer before printing.</p>
       </section>
       <aside id="field-notes" class="field-notes card" aria-label="Specimen field notes"><div class="loading-visual"><span class="spinner"></span></div></aside>
     </section>

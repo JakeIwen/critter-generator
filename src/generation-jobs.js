@@ -1,7 +1,16 @@
+import { JOB_KINDS } from '../shared/generation-timing.mjs';
 import { api } from './api.js';
 import { createGenerationProgress } from './generation-progress.js';
 const runningStatuses = ['queued', 'running'];
-const stageTitles = {design:'Discovering a new species',model:'Building the print sculpture',image:'Observing it in its environment',done:'Discovery complete'};
+const stageTitles = { design:'Discovering a new species', 'cad-design':'Interpreting the portrait for CAD', model:'Building the print sculpture', image:'Drawing the portrait', review:'Reviewing the portrait', done:'Specimen updated' };
+
+function showJobProgress(byId, progress, job) {
+  if (job.kind === JOB_KINDS.CAD) {
+    progress.stop(); byId('status-progress').removeAttribute('value');
+    byId('status-progress').setAttribute('aria-valuetext', 'CAD generation in progress');
+    byId('status-estimate').textContent = 'Creating a printable approximation of the current portrait.';
+  } else progress.start(job.id, job.createdAt, job.estimatedDurationMs);
+}
 
 function refreshTiming(progress) {
   void api('/api/status', { signal: AbortSignal.timeout(5000) })
@@ -18,14 +27,13 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
     if (polling || !activeJob) return;
     polling = true; onBusy(true);
     byId('status-box').classList.remove('hidden');
-    if (activeJob !== cancellingJob) progress.start(activeJob);
     try {
       while (activeJob) {
         const job = await api(`/api/jobs/${activeJob}`);
         byId('status-box').classList.remove('hidden');
         byId('status-message').textContent = job.message;
         byId('status-title').textContent = stageTitles[job.stage] || 'Working on your specimen';
-        if (runningStatuses.includes(job.status) && activeJob !== cancellingJob) progress.start(activeJob, job.createdAt, job.estimatedDurationMs);
+        if (runningStatuses.includes(job.status) && activeJob !== cancellingJob) showJobProgress(byId, progress, job);
         if (!job.specimenId && runningStatuses.includes(job.status)) onPending(job, byId('status-title').textContent);
         if (job.specimenId) await onSpecimen(job.specimenId);
         if (!runningStatuses.includes(job.status)) {
@@ -42,14 +50,14 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
       onError(`Connection interrupted: ${error.message}. Reload to reconnect to the generation.`); onBusy(false);
     } finally { polling = false; }
   }
-  async function launch(url, body) {
-    if (activeJob) return onError('A discovery is already in progress.');
+  async function launch(url, body, kind = JOB_KINDS.GENERATION) {
+    if (activeJob) return onError('A specimen update is already in progress.');
     onBusy(true);
     try {
       const result = await api(url, { method: 'POST', body: JSON.stringify(body) });
       activeJob = result.jobId; sessionStorage.setItem('critter-job', activeJob);
-      progress.start(activeJob, result.createdAt, result.estimatedDurationMs);
-      byId('status-title').textContent = stageTitles.design;
+      showJobProgress(byId, progress, { id: activeJob, kind, createdAt: result.createdAt, estimatedDurationMs: result.estimatedDurationMs });
+      byId('status-title').textContent = stageTitles[kind === JOB_KINDS.CAD ? 'cad-design' : kind === JOB_KINDS.PORTRAIT ? 'image' : 'design'];
       byId('status-message').textContent = 'Connecting to Codex…';
       if (url === '/api/generate') onLaunchPending({ stage: 'design', message: 'Connecting to Codex…' }, stageTitles.design);
       void poll();

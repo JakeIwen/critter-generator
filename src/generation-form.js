@@ -1,67 +1,63 @@
 import { sliders } from '../shared/sliders.mjs';
 import { presets } from './presets.js';
 import { icon } from './icons.js';
-import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
+import { mountGenerationDirections } from './generation-directions.js';
 
-export function mountGenerationForm(byId, onGenerate) {
-  const selectedTypes = new Set();
-  const typeButtons = [...byId('generator-form').querySelectorAll('[data-animal-type]')];
-  const showTypes = () => {
-    for (const button of typeButtons) button.setAttribute('aria-pressed', String(selectedTypes.has(button.dataset.animalType)));
+function wireAnimalChoices(byId, selectedTypes, onChange) {
+  const buttons = [...byId('generator-form').querySelectorAll('[data-animal-type]')];
+  function showTypes() {
+    for (const button of buttons) button.setAttribute('aria-pressed', String(selectedTypes.has(button.dataset.animalType)));
     byId('any-animal').setAttribute('aria-pressed', String(selectedTypes.size === 0));
-  };
-  for (const button of typeButtons) button.onclick = () => {
+    const validLock = selectedTypes.size >= 1 && selectedTypes.size <= 3;
+    byId('lock-inspirations').setCustomValidity(byId('lock-inspirations').checked && !validLock ? 'Select one to three animal groups to keep that exact combination.' : '');
+  }
+  for (const button of buttons) button.onclick = () => {
     const id = button.dataset.animalType;
     if (selectedTypes.has(id)) selectedTypes.delete(id); else selectedTypes.add(id);
-    showTypes();
+    showTypes(); onChange();
   };
-  byId('any-animal').onclick = () => { selectedTypes.clear(); showTypes(); };
-  byId('print-model').onchange = () => {
-    byId('print-settings').disabled = !byId('print-model').checked;
-    byId('print-settings').classList.toggle('hidden', !byId('print-model').checked);
-  };
-  const applySettings = values => {
-    for (const { id, initial } of sliders) {
-      byId(id).value = values[id] ?? initial;
-      byId(id).oninput();
-    }
-  };
+  byId('any-animal').onclick = () => { selectedTypes.clear(); showTypes(); onChange(); };
+  byId('lock-inspirations').addEventListener('change', showTypes);
+  return showTypes;
+}
+
+function wireSliders(byId) {
   for (const { id } of sliders) byId(id).oninput = () => {
     byId(`${id}-value`).innerHTML = `${byId(id).value}<small>/100</small>`;
     byId(id).style.setProperty('--value', `${byId(id).value}%`);
   };
+  return values => {
+    for (const { id, initial } of sliders) { byId(id).value = values[id] ?? initial; byId(id).oninput(); }
+  };
+}
+
+export function mountGenerationForm(byId, onGenerate, onError = () => {}) {
+  const selectedTypes = new Set();
+  const readBase = () => ({ prompt: byId('prompt').value.trim(), animalTypes: [...selectedTypes], legless: byId('legless').checked,
+    ...Object.fromEntries(sliders.map(({ id }) => [id, Number(byId(id).value)])) });
+  const directions = mountGenerationDirections(byId, { readBase, onError });
+  const showTypes = wireAnimalChoices(byId, selectedTypes, directions.clearPlan);
+  const applySliders = wireSliders(byId);
   document.querySelectorAll('[data-preset]').forEach(button => button.onclick = () => {
-    const preset = presets[button.dataset.preset];
-    byId('prompt').value = preset.prompt;
-    applySettings(preset);
+    const preset = presets[button.dataset.preset]; byId('prompt').value = preset.prompt;
+    applySliders(preset); directions.clearPlan();
     document.querySelectorAll('[data-preset]').forEach(item => item.classList.toggle('chosen', item === button));
   });
   byId('generator-form').onsubmit = event => {
     event.preventDefault();
-    const settings = { prompt: byId('prompt').value.trim(), baseplate: byId('baseplate').checked,
-      animalTypes: [...selectedTypes], legless: byId('legless').checked, printModel: byId('print-model').checked };
-    for (const id of [...sliders.map(slider => slider.id), 'height']) settings[id] = Number(byId(id).value);
-    if (!settings.printModel && (!Number.isInteger(settings.height) || settings.height < PRINT_HEIGHT.min || settings.height > PRINT_HEIGHT.max)) settings.height = PRINT_HEIGHT.initial;
-    onGenerate(settings);
+    const settings = { ...readBase(), ...directions.values() };
+    if (byId('generator-form').reportValidity()) onGenerate(settings);
   };
   return {
     applySettings(settings) {
-      byId('prompt').value = settings.prompt ?? '';
-      byId('height').value = settings.height ?? PRINT_HEIGHT.initial;
-      byId('baseplate').checked = settings.baseplate ?? true;
-      byId('print-model').checked = settings.printModel ?? true;
-      byId('print-model').onchange();
-      byId('legless').checked = settings.legless ?? false;
-      selectedTypes.clear();
-      for (const button of typeButtons) if (settings.animalTypes?.includes(button.dataset.animalType)) selectedTypes.add(button.dataset.animalType);
-      showTypes();
-      applySettings(settings);
+      byId('prompt').value = settings.prompt ?? ''; byId('legless').checked = settings.legless ?? false;
+      selectedTypes.clear(); for (const id of settings.animalTypes ?? []) selectedTypes.add(id);
+      directions.applySettings(settings); showTypes(); applySliders(settings);
       byId('generator-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
     },
     setBusy(value) {
-      byId('generate').disabled = value;
-      byId('generate').innerHTML = value ? '<span class="spinner"></span> Discovering…' : `${icon('sparkle')} Generate lifeform ${icon('arrow')}`;
-      if (byId('retry-portrait')) byId('retry-portrait').disabled = value;
+      byId('generate').disabled = value; directions.setBusy(value);
+      byId('generate').innerHTML = value ? '<span class="spinner"></span> Working…' : `${icon('sparkle')} Generate lifeform ${icon('arrow')}`;
     },
   };
 }

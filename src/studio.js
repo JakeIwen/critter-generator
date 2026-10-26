@@ -1,3 +1,4 @@
+import { JOB_KINDS } from '../shared/generation-timing.mjs';
 import { api } from './api.js';
 import { renderCollection } from './collection.js';
 import { mountConnection } from './connection.js';
@@ -20,9 +21,10 @@ export function mountStudio() {
     document.querySelectorAll('[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
     if (page === 'collection') renderCollection(byId, specimens, selectFromCollection);
   };
-  const form = mountGenerationForm(byId, settings => jobs.launch('/api/generate', settings));
+  const form = mountGenerationForm(byId, settings => jobs.launch('/api/generate', settings), toast);
   const specimenView = createSpecimenView(byId, {
-    onPortrait: specimen => jobs.launch(`/api/specimens/${specimen.id}/portrait`, {}),
+    onPortrait: (specimen, body = {}) => jobs.launch(`/api/specimens/${specimen.id}/portrait`, body, JOB_KINDS.PORTRAIT),
+    onCad: (specimen, body) => jobs.launch(`/api/specimens/${specimen.id}/cad`, body, JOB_KINDS.CAD),
     onReuse: form.applySettings,
     onError: toast,
   });
@@ -45,7 +47,8 @@ export function mountStudio() {
       specimenView.resetToPortrait(); return loadSpecimens(id);
     },
     async onComplete(job) {
-      specimenView.resetToPortrait(); await loadSpecimens(job.specimenId); toast(job.message);
+      if (job.kind === JOB_KINDS.CAD && job.status === 'completed') specimenView.preferModel(); else specimenView.resetToPortrait();
+      await loadSpecimens(job.specimenId); toast(job.message);
     },
     onError: toast,
   });

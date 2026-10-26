@@ -77,3 +77,8 @@ four pairs). It is not a biological census or a limit for unrestricted generatio
 more appendages than the CAD model, while an octopus has arms and a sea star has tube feet without
 either needing mammal-like legs. Zero is an intentional option for naturally legless groups, and
 other groups can lose legs through an explicit user request or speculative adaptation.
+
+CAD is requested separately after a portrait exists. The current image guides the simplified recipe;
+its leg-pair range never constrains the original biological record. A new portrait version marks
+existing CAD out of date, while preserving its downloads. The "Follow my description" option avoids
+unrelated sampled groups, and the inspiration lock uses the exact selected one-to-three groups.

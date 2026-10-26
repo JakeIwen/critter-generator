@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createModel, stlBuffer, recipe, PRINT_RULES } from '../server/geometry.mjs';
 import { example, Anatomy } from '../shared/specimen.mjs';
-import { createAnatomyPlan } from '../shared/anatomy-plan.mjs';
+import { bodyPlans, shapeRanges } from '../shared/body-plans.mjs';
 
 function verifySerializedSolid(buffer, height) {
   const count = buffer.readUInt32LE(80);
@@ -148,15 +148,16 @@ test('optional baseplate changes the exported solid and preserves grounded SCAD 
   assert(plain.info.volumeCm3 < based.info.volumeCm3, 'STL volume loses the slab');
 });
 
-test('sampled physical diversity survives export as connected sturdy solids at both print-height limits', async () => {
-  const history = [], footprints = [], shapes = new Set();
-  for (let index = 0; index < 24; index++) {
-    const variation = createAnatomyPlan({ absurdity: 85, lethality: 75 }, `mesh-${index}`, history);
-    const anatomy = { ...example.anatomy, ...variation.anatomy };
-    history.unshift({ anatomy, variation });
+test('CAD recipe diversity survives export as connected sturdy solids at both print-height limits', async () => {
+  const footprints = [], shapes = new Set();
+  const recipes = Object.entries(bodyPlans).flatMap(([family, ranges]) => [0.1, 0.35, 0.65, 0.9].map(fraction => ({
+    family, anatomy: { ...example.anatomy, legLength: 3, ...Object.fromEntries(Object.entries({ ...ranges, ...shapeRanges })
+      .map(([key, [min, max]]) => [key, min + fraction * (max - min)])) },
+  })));
+  for (const [index, { family, anatomy }] of recipes.entries()) {
     for (const [height, baseplate] of [[60, true], [500, false]]) {
       const model = await createModel(anatomy, height, baseplate);
-      assert.equal(model.info.components, 1, `${variation.family} ${index}`);
+      assert.equal(model.info.components, 1, `${family} ${index}`);
       verifySerializedSolid(stlBuffer(model), height);
       assert(model.info.minFeatureDiameterMm >= PRINT_RULES.minFeatureMm);
       if (anatomy.legPairs) assert(model.info.legShaftDiameterMm >= 5);
