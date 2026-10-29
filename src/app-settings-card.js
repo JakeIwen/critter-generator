@@ -1,5 +1,5 @@
 import { APP_SETTINGS, APP_SETTINGS_GROUPS, defaultAppSettings } from '../shared/app-settings.mjs';
-import { effortLabel } from '../shared/generation-models.mjs';
+import { effortLabel, sortEfforts } from '../shared/generation-models.mjs';
 import { api } from './api.js';
 import { escape } from './specimen-format.js';
 
@@ -8,7 +8,7 @@ const appSettingsUrl = '/api/settings/app';
 function field(key, definition, state) {
   const id = `app-${key}`;
   if (Array.isArray(definition.default)) {
-    const efforts = [...new Set([...state.efforts, ...state.draft[key]])].sort();
+    const efforts = sortEfforts(new Set([...state.efforts, ...state.draft[key]]));
     return `<fieldset class="settings-efforts"><legend title="${escape(definition.help)}">${escape(definition.label)}</legend>
       <div class="settings-effort-choices">${efforts.map(effort => `<label><input type="checkbox" data-app-setting="${key}" value="${escape(effort)}"${state.draft[key].includes(effort) ? ' checked' : ''}>${escape(effortLabel(effort))}</label>`).join('')}</div></fieldset>`;
   }

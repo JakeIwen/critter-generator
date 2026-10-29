@@ -41,3 +41,10 @@ const effortLabels = Object.freeze({ none: 'None', minimal: 'Minimal', low: 'Low
 export function effortLabel(effort) {
   return effort == null ? 'Default' : effortLabels[effort] ?? effort.charAt(0).toUpperCase() + effort.slice(1);
 }
+
+// Least to most reasoning, so effort lists read as a ladder; unknown efforts follow alphabetically.
+const EFFORT_ORDER = Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+const effortRank = effort => { const index = EFFORT_ORDER.indexOf(effort); return index === -1 ? EFFORT_ORDER.length : index; };
+export function sortEfforts(efforts) {
+  return [...efforts].sort((a, b) => effortRank(a) - effortRank(b) || a.localeCompare(b));
+}

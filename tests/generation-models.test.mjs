@@ -1,7 +1,7 @@
 import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROVIDERS, menuModels, joinModelValue, splitModelValue } from '../shared/generation-models.mjs';
+import { PROVIDERS, menuModels, joinModelValue, sortEfforts, splitModelValue } from '../shared/generation-models.mjs';
 import { menuModelLabel, modelLabel } from '../src/settings-format.js';
 import { mountSettingsPage } from '../src/settings-page.js';
 
@@ -125,4 +125,9 @@ test('Settings falls back to the first provider when a saved model is missing, u
 test('model menu applies a configured cap and still appends the saved model', () => {
   assert.deepEqual(menuModels(models, 'model-8', 1), [models[0], models[8]]);
   assert.deepEqual(menuModels(models, 'model-8', 30), models);
+});
+
+test('sortEfforts orders efforts as a reasoning ladder with unknown efforts last', () => {
+  assert.deepEqual(sortEfforts(['ultra', 'high', 'xhigh', 'low', 'max', 'medium', 'turbo']),
+    ['low', 'medium', 'high', 'xhigh', 'max', 'ultra', 'turbo']);
 });
