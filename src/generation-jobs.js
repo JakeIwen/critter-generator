@@ -15,7 +15,7 @@ function showJobProgress(byId, progress, job) {
 
 function refreshTiming(progress) {
   void api('/api/status', { signal: AbortSignal.timeout(5000) })
-    .then(status => progress.setTiming(status.generationTiming))
+    .then(status => progress.setTiming(status.generationTiming, status.config))
     .catch(() => {}); // Connection polling retries this optional refresh.
 }
 
@@ -44,7 +44,8 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
           refreshTiming(progress);
           await onComplete(job); break;
         }
-        await new Promise(resolve => setTimeout(resolve, 1800));
+        // Job polling cadence is UI feedback, independent of generation timeouts.
+      await new Promise(resolve => setTimeout(resolve, 1800));
       }
     } catch (error) {
       progress.stop();

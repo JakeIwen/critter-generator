@@ -15,6 +15,8 @@ function executable(file) {
 }
 
 export function resolveClaudeExecutable() {
+  // The isolated-check marker must block bundled SDK binaries as well as PATH discovery.
+  if (process.env.CRITTER_CHECK_MARKER) return undefined;
   // An explicit path never falls back: isolated checks can prohibit the real CLI.
   if (process.env.CRITTER_CLAUDE_EXECUTABLE) return executable(process.env.CRITTER_CLAUDE_EXECUTABLE);
   const base = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;

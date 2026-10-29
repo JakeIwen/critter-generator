@@ -24,9 +24,8 @@ export const Settings = z.object({
     .refine(values => new Set(values).size === values.length, 'Choose each animal type once.'),
   legless: z.boolean().default(false),
   ...generationOptionFields,
-}).strict().refine(settings => !settings.directionLocks.inspirations ||
-  (settings.animalTypes.length >= 1 && settings.animalTypes.length <= 3), {
-  message: 'Lock one to three selected inspiration groups.', path: ['directionLocks', 'inspirations'],
+}).strict().refine(settings => !settings.directionLocks.inspirations || settings.animalTypes.length >= 1, {
+  message: 'Select at least one inspiration group to lock.', path: ['directionLocks', 'inspirations'],
 });
 export const Anatomy = z.object({
   bodyLength: z.number().min(18).max(42),

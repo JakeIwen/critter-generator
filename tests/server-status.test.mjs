@@ -8,6 +8,7 @@ import { createServer } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { once } from 'node:events';
 import { Store } from '../server/store.mjs';
+import { DEFAULT_APP_SETTINGS, publicAppSettings } from '../shared/app-settings.mjs';
 import { COOKIE } from '../server/login.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -67,6 +68,7 @@ test('connect retries Codex and returns the usual session-aware status on localh
   const status = await response.json();
   assert.equal(status.connected, true); assert.equal(status.connection.codex.connected, true);
   assert.equal(status.owner, true); assert.equal(status.session, null);
+  assert.deepEqual(status.config, publicAppSettings(DEFAULT_APP_SETTINGS));
   assert.deepEqual(status.generation, { provider: 'codex', model: 'fixture', effort: null });
 });
 
@@ -89,6 +91,8 @@ test('public status identifies passcode sessions and the logout link clears them
   const cookie = entered.headers.get('set-cookie').split(';')[0];
   const status = await (await request('/api/status', { headers: { cookie } })).json();
   assert.equal(status.session, 'passcode'); assert.equal(status.owner, false);
+  assert.deepEqual(status.config, publicAppSettings(DEFAULT_APP_SETTINGS));
+  for (const method of ['GET', 'PUT']) assert.equal((await request('/api/settings/app', { method, headers: { cookie, ...appHeaders } })).status, 403);
   const response = await request('/logout', { headers: { cookie } });
   assert.equal(response.status, 303); assert.equal(response.headers.get('location'), '/auth');
   assert.equal(response.headers.get('set-cookie'), `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`);

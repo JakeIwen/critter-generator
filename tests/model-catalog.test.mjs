@@ -1,6 +1,7 @@
+import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ModelCatalog, GenerationSelection, CATALOG_FRESH_MS, CATALOG_RETRY_MS } from '../server/model-catalog.mjs';
+import { ModelCatalog, GenerationSelection, CATALOG_RETRY_MS } from '../server/model-catalog.mjs';
 import { DEFAULT_GENERATION_MODEL, TEXT_STAGES, providerForStage, effortLabel } from '../shared/generation-models.mjs';
 
 const astra = { id: 'gpt-6-astra', label: 'Astra', description: null,
@@ -31,7 +32,7 @@ test('catalog is lazy, caches successful discovery for fifteen minutes and suppo
   const first = await catalog.getCatalog();
   assert.equal(first.providers.length, 2); assert.equal(first.refreshing, false);
   assert.deepEqual(calls, { codex: 1, claude: 1 });
-  tick(CATALOG_FRESH_MS - 1); assert.deepEqual(await catalog.getCatalog(), first);
+  tick(DEFAULT_APP_SETTINGS.catalogFreshMinutes * 60_000 - 1); assert.deepEqual(await catalog.getCatalog(), first);
   tick(1); await catalog.getCatalog(); assert.deepEqual(calls, { codex: 2, claude: 2 });
   await catalog.getCatalog({ refresh: true }); assert.deepEqual(calls, { codex: 3, claude: 3 });
 });
@@ -105,4 +106,34 @@ test('catalog keeps and validates models beyond the menu limit', async () => {
   const catalog = new ModelCatalog({ discoverers: { codex: async () => listed } });
   assert.equal((await catalog.getProvider('codex')).models.length, listed.length);
   assert.equal(await catalog.validateSelection({ ...DEFAULT_GENERATION_MODEL, model: listed.at(-1).id }), null);
+});
+
+
+test('effort hiding changes on cached reads and validation without rediscovery', async () => {
+  let settings = { ...DEFAULT_APP_SETTINGS }, calls = 0;
+  const catalog = new ModelCatalog({ getSettings: () => settings, discoverers: {
+    codex: async () => { calls++; return [astra]; },
+    claude: async () => [{ ...fable, efforts: ['medium', 'future'], defaultEffort: 'future' }],
+  } });
+  await catalog.getCatalog();
+  assert.deepEqual(catalog.effortChoices(), ['future', 'high', 'low', 'max', 'medium', 'ultra', 'xhigh']);
+  settings = { ...settings, hiddenEfforts: ['low', 'future', 'saved-hidden'] };
+  const state = await catalog.getProvider('codex');
+  assert(state.models[0].efforts.includes('ultra')); assert(!state.models[0].efforts.includes('low'));
+  assert.equal(await catalog.validateSelection({ ...DEFAULT_GENERATION_MODEL, effort: 'ultra' }), null);
+  assert.match(await catalog.validateSelection({ ...DEFAULT_GENERATION_MODEL, effort: 'low' }), /supported effort/);
+  assert(catalog.effortChoices().includes('saved-hidden')); assert.equal(calls, 1);
+});
+
+test('freshness setting takes effect on the next catalog read', async () => {
+  let clock = 0, calls = 0, settings = { ...DEFAULT_APP_SETTINGS };
+  const catalog = new ModelCatalog({ now: () => clock, getSettings: () => settings, discoverers: {
+    codex: async () => { calls++; return [astra]; },
+  } });
+  await catalog.getProvider('codex'); clock = 60_000;
+  await catalog.getProvider('codex'); assert.equal(calls, 1);
+  settings = { ...settings, catalogFreshMinutes: 1 };
+  await catalog.getProvider('codex'); assert.equal(calls, 2);
+  settings = { ...settings, catalogFreshMinutes: 60 }; clock += 30 * 60_000;
+  await catalog.getProvider('codex'); assert.equal(calls, 2);
 });

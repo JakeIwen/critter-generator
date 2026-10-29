@@ -5,8 +5,6 @@ import { animalTypeById } from '../shared/animal-types.mjs';
 import { compositionModeOptions, aspectRatioOptions, directionOptions,
   MAX_REQUIREMENT_COUNT, MAX_REQUIREMENT_LENGTH } from '../shared/generation-choices.mjs';
 
-export const MAX_ANIMAL_INSPIRATIONS = 3;
-
 const selectOptions = choices => choices.map(({ id, label, description }) => `<option value="${escape(id)}"${description ? ` title="${escape(description)}"` : ''}>${escape(label)}</option>`).join('');
 const lockOptions = choices => `<option value="">Choose for me</option>${selectOptions(choices)}`;
 const featureLines = text => [...new Set(text.split('\n').map(line => line.trim()).filter(Boolean))];

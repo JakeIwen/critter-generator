@@ -1,11 +1,12 @@
+import { DEFAULT_APP_SETTINGS, generationTimeoutMessage } from '../shared/app-settings.mjs';
 import { readFile } from 'node:fs/promises';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import { GENERATION_INSTRUCTIONS } from '../shared/generation-instructions.mjs';
 import { safeError } from './codex.mjs';
 import { claudeOptions, resolveClaudeExecutable } from './provider-cli.mjs';
 
+// Discovery bounds the subscription handshake, not a generation turn.
 const DISCOVERY_TIMEOUT_MS = 20_000;
-const GENERATION_TIMEOUT_MS = 10 * 60_000;
 // No tools are offered, so the only extra turn is the structured-output end-turn tool call.
 const MAX_TURNS = 3;
 
@@ -65,9 +66,9 @@ async function readResult(session, { schema, onThread, onProgress }) {
 
 export class Claude {
   constructor(cwd, { query = sdkQuery, resolveExecutable = resolveClaudeExecutable,
-    timeoutMs = GENERATION_TIMEOUT_MS, discoveryTimeoutMs = DISCOVERY_TIMEOUT_MS } = {}) {
+    getSettings = () => DEFAULT_APP_SETTINGS, discoveryTimeoutMs = DISCOVERY_TIMEOUT_MS } = {}) {
     this.cwd = cwd; this.query = query; this.resolveExecutable = resolveExecutable;
-    this.timeoutMs = timeoutMs; this.discoveryTimeoutMs = discoveryTimeoutMs;
+    this.getSettings = getSettings; this.discoveryTimeoutMs = discoveryTimeoutMs;
     this.state = { connected: false, model: null, reason: 'Claude has not been checked yet.' };
   }
   async models() {
@@ -126,12 +127,13 @@ export class Claude {
     if (this.active) throw new Error('Claude is already generating a specimen.');
     this.active = true;
     const abortController = new AbortController();
+    const { generationTimeoutMinutes } = this.getSettings();
     let timer, abort;
     const stopped = new Promise((_, reject) => {
       const stop = message => { abortController.abort(); this.close(); reject(new Error(message)); };
       abort = () => stop('Generation cancelled.');
       options.signal?.addEventListener('abort', abort, { once: true });
-      timer = setTimeout(() => stop('Generation timed out after 10 minutes. Please retry.'), this.timeoutMs);
+      timer = setTimeout(() => stop(generationTimeoutMessage(generationTimeoutMinutes)), generationTimeoutMinutes * 60_000);
     });
     try { return await Promise.race([this.execute(options, abortController), stopped]); }
     catch (error) { throw new Error(safeError(error)); }

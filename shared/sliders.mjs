@@ -1,5 +1,6 @@
 // The personality sliders, in display order. The server's settings schema,
 // the generation prompt, and the browser form are all built from this list.
+// Initial values are per-request creative inputs, not app-wide policy.
 // No zod here: the browser bundle imports it too.
 export const sliders = [
   { id: 'absurdity', name: 'Absurdity', short: 'A', initial: 65, low: 'Almost plausible', high: 'Nature gave up',

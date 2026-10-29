@@ -1,3 +1,4 @@
+import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import { PROVIDERS, providerLabels, GENERATION_STAGES } from '../shared/generation-models.mjs';
 import { randomUUID } from 'node:crypto';
 import { createAnatomyPlan, plannedDesign } from '../shared/anatomy-plan.mjs';
@@ -9,10 +10,9 @@ import { imageBytes, safeError } from './codex.mjs';
 import { generateCad } from './cad-stage.mjs';
 import { GenerationTrace, interruptTrace } from './generation-trace.mjs';
 
-const DESIGN_ATTEMPTS = 3;
-
 export class GenerationJobs {
-  constructor({ store, providers, codex, catalog = null }) {
+  constructor({ store, providers, codex, catalog = null, getSettings = () => DEFAULT_APP_SETTINGS }) {
+    this.getSettings = getSettings;
     this.store = store; this.providers = providers ?? { [PROVIDERS.CODEX]: codex }; this.catalog = catalog; this.current = null;
     for (const job of store.list('jobs')) {
       if (['queued', 'running'].includes(job.status)) {
@@ -55,14 +55,15 @@ export class GenerationJobs {
     const variation = plan ?? createAnatomyPlan(settings, job.id, this.store.list('specimens'));
     this.update(job, { variation, message: 'Inventing the organism and writing field notes…' }); trace.save({ variation });
     const design = plannedDesign(settings, variation);
+    const { designAttempts } = this.getSettings();
     let result;
-    for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {
+    for (let attempt = 1; attempt <= designAttempts; attempt++) {
       try {
         result = await trace.run(this.providers, GENERATION_STAGES.DESIGN, { prompt: design.prompt, schema: design.schema, signal,
           onThread: designThreadId => this.update(job, { designThreadId }) }); break;
       } catch (error) {
-        if (error.code !== 'runaway_output' || attempt === DESIGN_ATTEMPTS || signal.aborted) throw error;
-        this.update(job, { message: `${providerLabels[job.generation.provider]} stalled; trying again (attempt ${attempt + 1} of ${DESIGN_ATTEMPTS})…` });
+        if (error.code !== 'runaway_output' || attempt === designAttempts || signal.aborted) throw error;
+        this.update(job, { message: `${providerLabels[job.generation.provider]} stalled; trying again (attempt ${attempt + 1} of ${designAttempts})…` });
       }
     }
     signal.throwIfAborted();

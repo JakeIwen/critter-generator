@@ -58,17 +58,19 @@ test('camera avoids the preceding angle unless the user explicitly locks it', ()
 });
 
 test('selected chips limit the pool and an inspiration lock uses every selected group', () => {
-  for (const selected of [['birds'], ['fish', 'cephalopods'], ['sky-drifters', 'dream-mimics']]) {
+  for (const selected of [['birds'], ['fish', 'cephalopods'], ['sky-drifters', 'dream-mimics'], ['birds', 'fish', 'worms', 'snails'], animalTypeIds]) {
     const selectedSettings = Settings.parse({ ...settings, animalTypes: selected });
     for (let index = 0; index < 20; index++) {
       const plan = createAnatomyPlan(selectedSettings, `selection-${index}`);
       assert(plan.inspirationIds.every(id => selected.includes(id)));
       if (selected.length === 1) assert.deepEqual(plan.inspirationIds, selected);
     }
-    const locked = { ...selectedSettings, directionLocks: { ...selectedSettings.directionLocks, inspirations: true } };
-    assert.deepEqual(createAnatomyPlan(locked, 'locked-groups').inspirationIds, selected);
+    const locked = Settings.parse({ ...selectedSettings, directionLocks: { ...selectedSettings.directionLocks, inspirations: true } });
+    const plan = createAnatomyPlan(locked, 'locked-groups');
+    assert.deepEqual(plan.inspirationIds, selected);
+    assert.equal(isPlanCompatible(locked, plan), true);
   }
-  for (const animalTypes of [[], ['birds', 'fish', 'worms', 'snails']]) {
+  for (const animalTypes of [[], ['birds', 'birds'], ['unknown-group']]) {
     assert.equal(Settings.safeParse({ ...settings, animalTypes, directionLocks: { inspirations: true } }).success, false);
   }
 });

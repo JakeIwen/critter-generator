@@ -458,8 +458,21 @@ summary{cursor:pointer;line-height:1.6;font-size:11px;font-weight:600}
 .settings-form{display:grid;gap:12px;margin-bottom:16px}
 .settings-form label{display:grid;gap:6px;font-size:11px;font-weight:600;min-width:0}
 .settings-form label[hidden]{display:none}
-.settings-form select{width:100%;min-width:0;max-width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--subtle);color:var(--text);font:inherit}
-.settings-form select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.settings-form select,.settings-number input{width:100%;min-width:0;max-width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--subtle);color:var(--text);font:inherit}
+.settings-form select:focus-visible,.settings-number input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.app-settings-fields,.settings-group,.settings-efforts{border:0;padding:0;min-width:0}
+.app-settings-fields{display:grid;gap:18px}
+.settings-group{display:grid;gap:10px}
+.settings-group>legend{font-size:12px;font-weight:600;margin-bottom:10px}
+.settings-form .app-setting{display:grid;grid-template-columns:minmax(0,1fr) 116px;align-items:center;gap:12px}
+.settings-number{display:flex;align-items:center;gap:6px;min-width:0}
+.settings-number input{width:66px;flex-shrink:0}
+.settings-number>span{font-size:10px;color:var(--muted)}
+.settings-efforts legend{font-size:11px;font-weight:600;margin-bottom:8px}
+.settings-effort-choices{display:flex;flex-wrap:wrap;gap:8px 14px}
+.settings-effort-choices label{display:flex;align-items:center;gap:6px;overflow-wrap:anywhere}
+.settings-effort-choices input{accent-color:var(--accent)}
+.settings-stats{grid-column:1/-1}
 .settings-buttons{display:flex;flex-wrap:wrap;gap:8px}
 .settings-note{font-size:10px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
 .settings-reason{color:var(--review)}

@@ -4,12 +4,12 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { Claude } from '../server/claude.mjs';
-import { claudeEnvironment } from '../server/provider-cli.mjs';
+import { claudeEnvironment, resolveClaudeExecutable } from '../server/provider-cli.mjs';
 import { GENERATION_INSTRUCTIONS } from '../shared/generation-instructions.mjs';
 
 const model = { value: 'fable', displayName: 'Fable', supportsEffort: true, supportedEffortLevels: ['low', 'high', 'max'], isDefault: true };
 function fixture({ messages = [], account = { subscriptionType: 'max', apiProvider: 'firstParty', apiKeySource: 'none' },
-  initialization, hold = false, models = [model] } = {}) {
+  initialization, hold = false, models = [model], getSettings } = {}) {
   const calls = [], inputs = [];
   let closed = 0, interrupted = 0, entered;
   const started = new Promise(resolve => { entered = resolve; });
@@ -24,7 +24,7 @@ function fixture({ messages = [], account = { subscriptionType: 'max', apiProvid
         else for (const message of messages) yield message;
       } };
   };
-  const provider = new Claude(os.tmpdir(), { query, resolveExecutable: () => '/fixture/claude', discoveryTimeoutMs: 15 });
+  const provider = new Claude(os.tmpdir(), { query, resolveExecutable: () => '/fixture/claude', discoveryTimeoutMs: 15, getSettings });
   return { provider, calls, inputs, started, closed: () => closed, interrupted: () => interrupted };
 }
 
@@ -113,4 +113,33 @@ test('Claude listing strips only a trailing recommended marker and carries the r
     { id: 'haiku', label: 'Haiku 5.5', resolvedModel: 'claude-haiku-5-5' },
     { id: 'named', label: 'Named (recommended) preview', resolvedModel: null },
   ]);
+});
+
+test('Claude generation timeout reads current settings and closes the timed-out session', async t => {
+  let generationTimeoutMinutes = 2;
+  const { provider, started, interrupted } = fixture({ hold: true, getSettings: () => ({ generationTimeoutMinutes }) });
+  await provider.connect();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const result = provider.run({ prompt: 'Wait' });
+  const rejected = assert.rejects(result, /after 2 minutes/);
+  await started;
+  t.mock.timers.tick(119_999); assert.equal(interrupted(), 0);
+  t.mock.timers.tick(1); await rejected; assert.equal(interrupted(), 1);
+  generationTimeoutMinutes = 1;
+  const next = provider.run({ prompt: 'Wait again' });
+  const nextRejected = assert.rejects(next, /after 1 minute\./);
+  t.mock.timers.tick(60_000); await nextRejected;
+});
+
+test('the isolated-check marker disables even an explicitly resolvable Claude executable', t => {
+  const keys = ['CRITTER_CHECK_MARKER', 'CRITTER_CLAUDE_EXECUTABLE'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  t.after(() => { for (const key of keys) {
+    if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
+  } });
+  delete process.env.CRITTER_CHECK_MARKER;
+  process.env.CRITTER_CLAUDE_EXECUTABLE = process.execPath;
+  assert.equal(resolveClaudeExecutable(), process.execPath);
+  process.env.CRITTER_CHECK_MARKER = 'isolated-fixture';
+  assert.equal(resolveClaudeExecutable(), undefined);
 });

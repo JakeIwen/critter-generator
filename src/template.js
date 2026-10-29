@@ -1,6 +1,7 @@
 import { PAGE_PATHS } from '../shared/page-routes.mjs';
+import { DEFAULT_APP_SETTINGS, inspirationHelp } from '../shared/app-settings.mjs';
 import { sliders } from '../shared/sliders.mjs';
-import { generationDirectionsMarkup, MAX_ANIMAL_INSPIRATIONS } from './generation-directions.js';
+import { generationDirectionsMarkup } from './generation-directions.js';
 import { animalTypes } from '../shared/animal-types.mjs';
 import { icon } from './icons.js';
 import { escape } from './specimen-format.js';
@@ -10,7 +11,8 @@ function slider({ id, name, initial: value, low, high }) {
 }
 
 function animalChoices() {
-  return `<details class="inspiration-details"><summary title="Choose up to ${MAX_ANIMAL_INSPIRATIONS} animal groups to use together.">Animal inspiration <span class="optional-tag">OPTIONAL · MAX ${MAX_ANIMAL_INSPIRATIONS}</span></summary>
+  const cap = DEFAULT_APP_SETTINGS.maxAnimalInspirations;
+  return `<details class="inspiration-details"><summary id="animal-summary" title="${escape(inspirationHelp(cap))}">Animal inspiration <span id="animal-limit" class="optional-tag">OPTIONAL · MAX ${cap}</span></summary>
     <div class="animal-chips"><button id="any-animal" class="animal-chip" type="button" aria-pressed="true">Any animal</button>${animalTypes.map(type => `<button class="animal-chip" type="button" data-animal-type="${type.id}" aria-pressed="false" title="${escape(type.traits)}">${escape(type.label)}</button>`).join('')}</div>
   </details>`;
 }

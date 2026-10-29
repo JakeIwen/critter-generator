@@ -15,11 +15,12 @@ export function mountStudio() {
   let specimens = [], owner = false;
   const showCollection = () => renderCollection(byId, specimens, owner, archiveSpecimen);
   const setOwner = value => { if (owner !== value) { owner = value; showCollection(); } router.setOwner(value); };
+  // Toast lifetime is transient UI feedback, not an app-wide generation preference.
   const toast = message => {
     byId('toast').textContent = message; byId('toast').classList.remove('hidden');
     clearTimeout(toast.timer); toast.timer = setTimeout(() => byId('toast').classList.add('hidden'), 9000);
   };
-  const settingsPage = mountSettingsPage(byId, { onError: toast });
+  const settingsPage = mountSettingsPage(byId, { onError: toast, onSaved: () => connection.check() });
   const form = mountGenerationForm(byId, settings => jobs.launch('/api/generate', settings), toast);
   const specimenView = createSpecimenView(byId, {
     onPortrait: (specimen, body = {}) => jobs.launch(`/api/specimens/${specimen.id}/portrait`, body, JOB_KINDS.PORTRAIT),
@@ -53,7 +54,7 @@ export function mountStudio() {
     },
     onError: toast,
   });
-  const connection = mountConnection(byId, jobs, toast, setOwner);
+  const connection = mountConnection(byId, jobs, toast, setOwner, form.setConfig);
   void initialize(loadSpecimens, connection, toast);
 }
 

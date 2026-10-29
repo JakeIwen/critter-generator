@@ -4,13 +4,16 @@ import { animalTypes, animalTypeIds, animalTypeById } from './animal-types.mjs';
 import { viewpoints, encounters, compositions, biologicalSilhouettes, biologicalChallenges } from './encounter-directions.mjs';
 import { createVisualRequirements, InputVisualFeatures, VisualRequirements } from './visual-requirements.mjs';
 
+// A fixed recent-history horizon preserves seeded sampling behavior and variety.
 const HISTORY_SIZE = 18;
+// Versions identify saved schema/prompt compatibility, not runtime preferences.
 export const ANATOMY_PLAN_VERSION = 4;
 const optionalChoice = choices => z.enum(Object.keys(choices)).nullable();
 export const AnatomyPlan = z.object({
   version: z.literal(ANATOMY_PLAN_VERSION),
   seed: z.string().min(1).max(100),
-  inspirationIds: z.array(z.enum(animalTypeIds)).max(3).refine(ids => new Set(ids).size === ids.length),
+  // Explicit locks can use any valid group set; only automatic sampling remains 1–3.
+  inspirationIds: z.array(z.enum(animalTypeIds)).max(animalTypeIds.length).refine(ids => new Set(ids).size === ids.length),
   portrait: z.object({
     viewpoint: optionalChoice(viewpoints), encounter: optionalChoice(encounters), composition: optionalChoice(compositions),
   }).strict(),

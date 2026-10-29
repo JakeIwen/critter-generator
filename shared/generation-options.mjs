@@ -21,4 +21,5 @@ export const generationOptionFields = {
   review: z.boolean().default(false),
 };
 
+// Prompt versions identify the template used by saved jobs and traces.
 export const GENERATION_PROMPT_VERSION = 4;

@@ -1,12 +1,12 @@
+import { DEFAULT_APP_SETTINGS } from './app-settings.mjs';
+
 export const PROVIDERS = Object.freeze({ CODEX: 'codex', CLAUDE: 'claude' });
 export const providerLabels = Object.freeze({ [PROVIDERS.CODEX]: 'Codex', [PROVIDERS.CLAUDE]: 'Claude' });
 export const DEFAULT_GENERATION_MODEL = Object.freeze({ provider: PROVIDERS.CODEX, model: 'gpt-6-astra', effort: 'max' });
 export const GENERATION_MODEL_KEY = 'generation-model';
-export const MENU_MODELS_PER_PROVIDER = 6;
-export const HIDDEN_EFFORTS = Object.freeze(['ultra']);
 
-export function menuModels(models, selectedId) {
-  const visible = models.slice(0, MENU_MODELS_PER_PROVIDER);
+export function menuModels(models, selectedId, limit = DEFAULT_APP_SETTINGS.menuModelsPerProvider) {
+  const visible = models.slice(0, limit);
   const selected = models.find(model => model.id === selectedId);
   if (selected && !visible.includes(selected)) visible.push(selected);
   return visible;

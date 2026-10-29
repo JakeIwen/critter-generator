@@ -1,3 +1,4 @@
+import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -5,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.mjs';
-import { DEFAULT_ESTIMATE_MS, TIMING_WINDOW, OUTLIER_MS, JOB_KINDS, completedGenerationDuration,
+import { JOB_KINDS, completedGenerationDuration,
   generationTimingFromJobs } from '../shared/generation-timing.mjs';
 
 const epoch = Date.parse('2026-10-01T00:00:00Z');
@@ -18,7 +19,7 @@ function completed(index, durationMs = (index + 1) * 1000, extra = {}) {
 test('rolling timing uses the most recent five completed full generations, ordered by completion', () => {
   const jobs = Array.from({ length: 12 }, (_, index) => completed(index));
   const timing = generationTimingFromJobs([...jobs].reverse());
-  assert.equal(timing.sampleCount, TIMING_WINDOW);
+  assert.equal(timing.sampleCount, DEFAULT_APP_SETTINGS.timingWindow);
   assert.equal(timing.averageDurationMs, 10_000, 'Oldest seven durations are outside the five-generation window');
   assert.equal(timing.estimatedDurationMs, timing.averageDurationMs);
   assert.equal(timing.updatedAt, jobs[11].finishedAt);
@@ -42,7 +43,7 @@ test('seven-minute samples are excluded before selecting the rolling window', ()
 
 test('a sample of exactly six minutes is included', () => {
   const older = Array.from({ length: 5 }, (_, index) => completed(index, (index + 1) * 1000));
-  const threshold = completed(5, OUTLIER_MS);
+  const threshold = completed(5, DEFAULT_APP_SETTINGS.timingOutlierMinutes * 60_000);
   const timing = generationTimingFromJobs([...older, threshold]);
   assert.equal(timing.sampleCount, 5);
   assert.equal(timing.averageDurationMs, 74_800);
@@ -78,7 +79,7 @@ test('invalid and nonpositive timestamp intervals are excluded; stored duration 
   assert.equal(generationTimingFromJobs([valid, completed(1, 60_000)]).averageDurationMs, 60_001);
   assert.deepEqual(generationTimingFromJobs(invalid), {
     sampleCount: 0, excludedOutliers: 0, averageDurationMs: null,
-    estimatedDurationMs: DEFAULT_ESTIMATE_MS, updatedAt: null,
+    estimatedDurationMs: DEFAULT_APP_SETTINGS.initialEstimateSeconds * 1000, updatedAt: null,
   });
 });
 
@@ -86,7 +87,7 @@ test('SQLite stores the rolling average, updates idempotently and restores it ac
   const root = mkdtempSync(path.join(os.tmpdir(), 'critter-timing-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   let store = new Store(root);
-  assert.equal(store.generationTiming().estimatedDurationMs, DEFAULT_ESTIMATE_MS);
+  assert.equal(store.generationTiming().estimatedDurationMs, DEFAULT_APP_SETTINGS.initialEstimateSeconds * 1000);
   const jobs = Array.from({ length: 12 }, (_, index) => completed(index));
   for (const job of jobs) store.save('jobs', job.id, job);
   const expected = store.generationTiming();
@@ -107,7 +108,7 @@ test('SQLite stores the rolling average, updates idempotently and restores it ac
     assert.deepEqual(store.generationTiming(), expected);
     store.save('jobs', jobs[11].id, { ...jobs[11], status: 'failed' });
     assert.equal(store.generationTiming().averageDurationMs, 9_000, 'Corrected historical status removes that sample');
-    assert.equal(store.generationTiming().sampleCount, TIMING_WINDOW);
+    assert.equal(store.generationTiming().sampleCount, DEFAULT_APP_SETTINGS.timingWindow);
   } finally { store.db.close(); }
 });
 

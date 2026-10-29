@@ -14,7 +14,7 @@ async function server(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'critter-settings-'));
   const store = new Store(directory);
   let discoveries = 0;
-  const catalog = new ModelCatalog({ discoverers: {
+  const catalog = new ModelCatalog({ getSettings: () => store.appSettings(), discoverers: {
     codex: async () => { discoveries++; return [{ id: DEFAULT_GENERATION_MODEL.model, label: 'Astra', description: null,
       efforts: ['low', 'max'], defaultEffort: 'low', isDefault: true }]; },
     claude: async () => { discoveries++; throw new Error('Claude is not signed in.'); },
@@ -68,4 +68,51 @@ test('forced model refresh rechecks both accounts while ordinary reads share the
   await request('/api/models'); assert.equal(discoveries(), 2);
   await request('/api/models'); assert.equal(discoveries(), 2);
   await request('/api/models?refresh=1'); assert.equal(discoveries(), 4);
+});
+
+
+test('app settings enforce owner access, strict validation and the saved effort guard', async t => {
+  const { request, store, discoveries } = await server(t);
+  for (const selection of [undefined, store.appSettings()]) {
+    const response = await request('/api/settings/app', { owner: false, selection });
+    assert.equal(response.status, 403);
+  }
+  assert.equal(discoveries(), 0);
+  const initial = await (await request('/api/settings/app')).json();
+  assert.deepEqual(initial.values, store.appSettings());
+  assert.deepEqual(initial.efforts, ['low', 'max', 'ultra']);
+  const values = { ...initial.values, timingWindow: 2, initialEstimateSeconds: 80, hiddenEfforts: ['ultra', 'low'] };
+  assert.equal((await request('/api/settings/app', { selection: values })).status, 200);
+  assert.deepEqual((await (await request('/api/settings/app')).json()).values, values);
+  assert.equal(store.generationTiming().estimatedDurationMs, 80_000);
+  const hiddenSelection = await request('/api/settings/generation', { selection: { ...DEFAULT_GENERATION_MODEL, effort: 'low' } });
+  assert.equal(hiddenSelection.status, 400);
+  for (const selection of [{ ...values, timingWindow: 21 }, { ...values, extra: true }, { ...values, hiddenEfforts: ['Max'] }]) {
+    assert.equal((await request('/api/settings/app', { selection })).status, 400);
+  }
+  const rejected = await request('/api/settings/app', { selection: { ...values, hiddenEfforts: ['max'] } });
+  assert.equal(rejected.status, 400); assert.match((await rejected.json()).error, /Cannot hide the saved generation effort "max"/);
+  assert.deepEqual(store.appSettings(), values);
+  const stats = await (await request('/api/stats')).json();
+  assert.equal(stats.timing.estimatedDurationMs, 80_000);
+});
+
+
+test('generation saves recheck hidden efforts after asynchronous discovery', async t => {
+  const { request, store, catalog } = await server(t);
+  const validate = catalog.validateSelection.bind(catalog);
+  let release, entered;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  t.mock.method(catalog, 'validateSelection', async selection => {
+    const result = await validate(selection);
+    entered(); await new Promise(resolve => { release = resolve; });
+    return result;
+  });
+  const pending = request('/api/settings/generation', { selection: { ...DEFAULT_GENERATION_MODEL, effort: 'low' } });
+  await waiting;
+  const saved = await request('/api/settings/app', { selection: { ...store.appSettings(), hiddenEfforts: ['low'] } });
+  assert.equal(saved.status, 200); release();
+  const rejected = await pending; assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /hidden/);
+  assert.equal(store.generationModel().effort, 'max');
 });

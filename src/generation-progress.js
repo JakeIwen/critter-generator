@@ -1,5 +1,6 @@
-import { DEFAULT_ESTIMATE_MS, TIMING_WINDOW } from '../shared/generation-timing.mjs';
+import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 
+// Progress repaint cadence is presentation only; each job keeps its frozen duration estimate.
 const TIMING_KEY = 'critter-job-timing';
 const validEstimate = value => Number.isFinite(value) && value > 0 ? value : null;
 
@@ -23,8 +24,8 @@ export function createGenerationProgress(byId, {
   let timer = null;
   let startedAt = null;
   let activeJob = null;
-  let nextEstimateMs = DEFAULT_ESTIMATE_MS;
-  let jobEstimateMs = DEFAULT_ESTIMATE_MS;
+  let nextEstimateMs = DEFAULT_APP_SETTINGS.initialEstimateSeconds * 1000;
+  let jobEstimateMs = DEFAULT_APP_SETTINGS.initialEstimateSeconds * 1000;
   function render() {
     const elapsed = Math.max(0, now() - startedAt);
     const percent = Math.min(95, elapsed / jobEstimateMs * 95);
@@ -32,9 +33,9 @@ export function createGenerationProgress(byId, {
     byId('status-progress').setAttribute('aria-valuetext', `Estimated progress: ${Math.round(percent)}%`);
     byId('status-estimate').textContent = estimateLabel(jobEstimateMs);
   }
-  function setTiming(summary) {
-    if (summary) nextEstimateMs = validEstimate(summary.estimatedDurationMs) ?? validEstimate(summary.averageDurationMs) ?? DEFAULT_ESTIMATE_MS;
-    const count = Math.min(TIMING_WINDOW, Math.max(0, Math.trunc(summary?.sampleCount || 0)));
+  function setTiming(summary, config = DEFAULT_APP_SETTINGS) {
+    if (summary) nextEstimateMs = validEstimate(summary.estimatedDurationMs) ?? validEstimate(summary.averageDurationMs) ?? DEFAULT_APP_SETTINGS.initialEstimateSeconds * 1000;
+    const count = Math.min(config.timingWindow ?? DEFAULT_APP_SETTINGS.timingWindow, Math.max(0, Math.trunc(summary?.sampleCount || 0)));
     const note = byId('generation-estimate');
     note.textContent = estimateLabel(nextEstimateMs);
     note.title = count ? `Based on the last ${count} completed generation${count === 1 ? '' : 's'}.` : 'Initial estimate until a completed generation is recorded.';

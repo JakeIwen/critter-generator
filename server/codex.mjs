@@ -1,3 +1,4 @@
+import { DEFAULT_APP_SETTINGS, generationTimeoutMessage } from '../shared/app-settings.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { readFile, realpath } from 'node:fs/promises';
@@ -13,7 +14,8 @@ export const safeError = (error) => String(error?.message || error)
   .replace(/\bsk-[\w-]+/g, '[redacted]').replace(/Bearer\s+[^\s"']+/gi, 'Bearer [redacted]').slice(0, 900);
 
 export class Codex {
-  constructor(cwd) {
+  constructor(cwd, { getSettings = () => DEFAULT_APP_SETTINGS } = {}) {
+    this.getSettings = getSettings;
     this.cwd = cwd; this.pending = new Map(); this.sequence = 0; this.active = null;
     this.state = { connected: false, model: null, reason: 'Connecting to Codex…' };
   }
@@ -21,6 +23,7 @@ export class Codex {
   rpc(method, params = {}) {
     return new Promise((resolve, reject) => {
       const id = ++this.sequence;
+      // RPC deadlines bound transport requests, independently of generation turns.
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method} timed out.`)); }, 45000);
       this.pending.set(id, { resolve, reject, timer });
       try { this.send({ id, method, params }); } catch (e) { clearTimeout(timer); this.pending.delete(id); reject(e); }
@@ -148,6 +151,7 @@ export class Codex {
     if (thread.sandbox?.type !== 'readOnly') throw new Error('Codex did not accept the read-only sandbox for this request.');
     const threadId = thread.thread.id;
     onThread?.(threadId);
+    const { generationTimeoutMinutes } = this.getSettings();
     let timer, abort;
     const result = new Promise((resolve, reject) => {
       this.active = { threadId, messages: [], images: [], resolve, reject, onProgress,
@@ -159,8 +163,8 @@ export class Codex {
       signal?.addEventListener('abort', abort, { once: true });
       timer = setTimeout(() => {
         abort();
-        if (this.active?.threadId === threadId) { this.active = null; reject(new Error('Generation timed out after 10 minutes. Please retry.')); }
-      }, 600000);
+        if (this.active?.threadId === threadId) { this.active = null; reject(new Error(generationTimeoutMessage(generationTimeoutMinutes))); }
+      }, generationTimeoutMinutes * 60_000);
     });
     // A disconnect can reject the turn while the start RPC is still pending.
     // Attach a handler immediately; the original rejection is awaited below.

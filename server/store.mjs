@@ -1,3 +1,5 @@
+import { APP_SETTINGS, APP_SETTINGS_KEY } from '../shared/app-settings.mjs';
+import { mergeAppSettings } from './app-settings.mjs';
 import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
@@ -78,12 +80,21 @@ export class Store {
       .run(key, JSON.stringify(value));
     return value;
   }
+  appSettings() { return mergeAppSettings(this.metadata(APP_SETTINGS_KEY)); }
+  saveAppSettings(values) {
+    const previous = this.appSettings();
+    this.setMetadata(APP_SETTINGS_KEY, values);
+    if (Object.entries(APP_SETTINGS).some(([key, definition]) => definition.group === 'timing' && previous[key] !== values[key])) {
+      this.refreshGenerationTiming();
+    }
+    return this.appSettings();
+  }
   generationModel() { return this.metadata(GENERATION_MODEL_KEY, DEFAULT_GENERATION_MODEL); }
   generationTiming() { return this.metadata(GENERATION_TIMING_KEY); }
   refreshGenerationTiming() {
     const jobs = this.db.prepare("SELECT data FROM jobs WHERE json_extract(data, '$.status') = 'completed'")
       .all().map(row => JSON.parse(row.data));
-    const timing = generationTimingFromJobs(jobs);
+    const timing = generationTimingFromJobs(jobs, this.appSettings());
     return this.setMetadata(GENERATION_TIMING_KEY, timing);
   }
   async model(id, anatomy, height, baseplate = true, options = {}) {

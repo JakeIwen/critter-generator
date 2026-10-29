@@ -44,7 +44,7 @@ test('image failures are explicit and credentials are redacted from errors', asy
 });
 
 class ProtocolFixture extends Codex {
-  constructor() { super('/fixture'); this.requests = []; }
+  constructor(options = {}) { super('/fixture', options); this.requests = []; }
   async open() {
     this.mcpNames = [];
     const models = await this.listModels();
@@ -103,4 +103,31 @@ test('models without reasoning effort omit the config override rather than passi
   assert.equal(Object.hasOwn(thread.config, 'model_reasoning_effort'), false);
   const turn = client.requests.find(request => request.method === 'turn/start').params;
   assert.equal(turn.model, 'other-model'); assert.equal(turn.effort, null);
+});
+
+test('Codex turn timeout reads current settings and reports the configured duration', async t => {
+  let generationTimeoutMinutes = 2, started;
+  const client = new ProtocolFixture({ getSettings: () => ({ generationTimeoutMinutes }) });
+  const rpc = client.rpc.bind(client);
+  client.rpc = async (method, params) => {
+    if (method === 'turn/start') {
+      client.receive({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: 'timeout-turn' } } });
+      started(); return { turn: { id: 'timeout-turn' } };
+    }
+    return rpc(method, params);
+  };
+  await client.connect();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const minutes of [2, 1]) {
+    generationTimeoutMinutes = minutes;
+    const ready = new Promise(resolve => { started = resolve; });
+    const result = client.run({ prompt: 'Wait', model: 'gpt-6-astra', effort: 'max' });
+    const rejected = assert.rejects(result, new RegExp(`after ${minutes} minute${minutes === 1 ? '' : 's'}\\.`));
+    await ready;
+    t.mock.timers.tick(minutes * 60_000 - 1);
+    assert(!client.requests.some(request => request.method === 'turn/interrupt'));
+    t.mock.timers.tick(1); await rejected;
+    assert(client.requests.some(request => request.method === 'turn/interrupt'));
+    client.requests.length = 0;
+  }
 });

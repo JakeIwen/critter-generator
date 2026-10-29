@@ -3,6 +3,7 @@ import { specimenFile } from './api.js';
 import { icon } from './icons.js';
 import { escape, usedSliders, hasPrintModel } from './specimen-format.js';
 
+// A short confirmation window prevents stale delete intent, independent of generation settings.
 const CONFIRM_DELETE_MS = 5000;
 
 export function renderCollection(byId, specimens, owner = false, onDelete) {
