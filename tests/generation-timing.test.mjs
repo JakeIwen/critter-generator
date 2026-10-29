@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.mjs';
-import { DEFAULT_ESTIMATE_MS, TIMING_WINDOW, JOB_KINDS, completedGenerationDuration,
+import { DEFAULT_ESTIMATE_MS, TIMING_WINDOW, OUTLIER_MS, JOB_KINDS, completedGenerationDuration,
   generationTimingFromJobs } from '../shared/generation-timing.mjs';
 
 const epoch = Date.parse('2026-10-01T00:00:00Z');
@@ -15,17 +15,39 @@ function completed(index, durationMs = (index + 1) * 1000, extra = {}) {
     createdAt: new Date(started).toISOString(), finishedAt: new Date(started + durationMs).toISOString(), ...extra };
 }
 
-test('rolling timing uses the most recent ten completed full generations, ordered by completion', () => {
+test('rolling timing uses the most recent five completed full generations, ordered by completion', () => {
   const jobs = Array.from({ length: 12 }, (_, index) => completed(index));
   const timing = generationTimingFromJobs([...jobs].reverse());
   assert.equal(timing.sampleCount, TIMING_WINDOW);
-  assert.equal(timing.averageDurationMs, 7500, 'Oldest two durations are outside the ten-generation window');
+  assert.equal(timing.averageDurationMs, 10_000, 'Oldest seven durations are outside the five-generation window');
   assert.equal(timing.estimatedDurationMs, timing.averageDurationMs);
   assert.equal(timing.updatedAt, jobs[11].finishedAt);
   assert.deepEqual(generationTimingFromJobs(jobs), timing, 'Input ordering cannot change the estimate');
   const longRunning = { ...completed(0), finishedAt: new Date(epoch + 20_000_000).toISOString() };
-  assert.equal(generationTimingFromJobs([...jobs, longRunning]).updatedAt, longRunning.finishedAt,
-    'The newest completed work counts even if it started earlier');
+  const withOutlier = generationTimingFromJobs([...jobs, longRunning]);
+  assert.equal(withOutlier.updatedAt, jobs[11].finishedAt,
+    'An outlier does not become the newest included sample');
+  assert.equal(withOutlier.excludedOutliers, 1);
+});
+
+test('seven-minute samples are excluded before selecting the rolling window', () => {
+  const older = Array.from({ length: 5 }, (_, index) => completed(index, (index + 1) * 1000));
+  const outlier = completed(5, 7 * 60_000);
+  const timing = generationTimingFromJobs([...older, outlier]);
+  assert.equal(timing.sampleCount, 5);
+  assert.equal(timing.averageDurationMs, 3_000);
+  assert.equal(timing.excludedOutliers, 1);
+  assert.equal(timing.updatedAt, older[4].finishedAt);
+});
+
+test('a sample of exactly six minutes is included', () => {
+  const older = Array.from({ length: 5 }, (_, index) => completed(index, (index + 1) * 1000));
+  const threshold = completed(5, OUTLIER_MS);
+  const timing = generationTimingFromJobs([...older, threshold]);
+  assert.equal(timing.sampleCount, 5);
+  assert.equal(timing.averageDurationMs, 74_800);
+  assert.equal(timing.excludedOutliers, 0);
+  assert.equal(timing.updatedAt, threshold.finishedAt);
 });
 
 test('only successful full generations contribute; legacy design runs are recognized', () => {
@@ -55,7 +77,8 @@ test('invalid and nonpositive timestamp intervals are excluded; stored duration 
   assert.equal(completedGenerationDuration(valid), 60_001);
   assert.equal(generationTimingFromJobs([valid, completed(1, 60_000)]).averageDurationMs, 60_001);
   assert.deepEqual(generationTimingFromJobs(invalid), {
-    sampleCount: 0, averageDurationMs: null, estimatedDurationMs: DEFAULT_ESTIMATE_MS, updatedAt: null,
+    sampleCount: 0, excludedOutliers: 0, averageDurationMs: null,
+    estimatedDurationMs: DEFAULT_ESTIMATE_MS, updatedAt: null,
   });
 });
 
@@ -67,7 +90,7 @@ test('SQLite stores the rolling average, updates idempotently and restores it ac
   const jobs = Array.from({ length: 12 }, (_, index) => completed(index));
   for (const job of jobs) store.save('jobs', job.id, job);
   const expected = store.generationTiming();
-  assert.equal(expected.averageDurationMs, 7500);
+  assert.equal(expected.averageDurationMs, 10_000);
   const reader = new DatabaseSync(path.join(root, 'critters.sqlite'), { readOnly: true });
   try {
     const stored = reader.prepare("SELECT value FROM app_metadata WHERE key='generation-timing'").get();
@@ -83,7 +106,7 @@ test('SQLite stores the rolling average, updates idempotently and restores it ac
   try {
     assert.deepEqual(store.generationTiming(), expected);
     store.save('jobs', jobs[11].id, { ...jobs[11], status: 'failed' });
-    assert.equal(store.generationTiming().averageDurationMs, 6500, 'Corrected historical status removes that sample');
+    assert.equal(store.generationTiming().averageDurationMs, 9_000, 'Corrected historical status removes that sample');
     assert.equal(store.generationTiming().sampleCount, TIMING_WINDOW);
   } finally { store.db.close(); }
 });

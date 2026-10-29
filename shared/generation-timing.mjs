@@ -1,5 +1,6 @@
 export const DEFAULT_ESTIMATE_MS = 130_000;
-export const TIMING_WINDOW = 10;
+export const TIMING_WINDOW = 5;
+export const OUTLIER_MS = 6 * 60_000;
 export const JOB_KINDS = Object.freeze({ GENERATION: 'generation', PORTRAIT: 'portrait', CAD: 'cad' });
 
 export function completedGenerationDuration(job) {
@@ -13,8 +14,11 @@ export function completedGenerationDuration(job) {
 }
 
 export function generationTimingFromJobs(jobs) {
-  const samples = jobs.map(job => ({ job, duration: completedGenerationDuration(job) }))
-    .filter(sample => sample.duration !== null)
+  const successfulSamples = jobs.map(job => ({ job, duration: completedGenerationDuration(job) }))
+    .filter(sample => sample.duration !== null);
+  const excludedOutliers = successfulSamples.filter(sample => sample.duration > OUTLIER_MS).length;
+  const samples = successfulSamples
+    .filter(sample => sample.duration <= OUTLIER_MS)
     .sort((a, b) => Date.parse(b.job.finishedAt) - Date.parse(a.job.finishedAt) ||
       Date.parse(b.job.createdAt) - Date.parse(a.job.createdAt) || String(a.job.id).localeCompare(String(b.job.id)))
     .slice(0, TIMING_WINDOW);
@@ -22,6 +26,7 @@ export function generationTimingFromJobs(jobs) {
     ? Math.round(samples.reduce((sum, sample) => sum + sample.duration, 0) / samples.length) : null;
   return {
     sampleCount: samples.length,
+    excludedOutliers,
     averageDurationMs,
     estimatedDurationMs: averageDurationMs ?? DEFAULT_ESTIMATE_MS,
     updatedAt: samples.length ? new Date(samples[0].job.finishedAt).toISOString() : null,
