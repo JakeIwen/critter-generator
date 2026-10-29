@@ -56,7 +56,8 @@ export function mountRouter(byId, { getSpecimens, specimenView, showCollection, 
   render();
   return {
     navigate,
-    setOwner(value) { if (owner !== value) { owner = value; render(); } },
+    // Owner status only gates the Settings page; re-rendering other pages would redraw the specimen.
+    setOwner(value) { if (owner === value) return; owner = value; if (parsePagePath(location.pathname)?.page === 'settings') render(); },
     async refresh(specimenId) {
       ready = true;
       if (specimenId) {
