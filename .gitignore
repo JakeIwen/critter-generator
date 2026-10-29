@@ -41,3 +41,6 @@ critter-generator-backup-*.tar.gz
 .DS_Store
 *.swp
 *.swo
+
+# Browser MCP screenshot scratch
+.playwright-mcp/
