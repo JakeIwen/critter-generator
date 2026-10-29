@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { createAnatomyPlan } from '../shared/anatomy-plan.mjs';
+import { TIMING_WINDOW } from '../shared/generation-timing.mjs';
 import { Settings } from '../shared/specimen.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -41,7 +42,7 @@ async function isolatedGenerationServer(t, { failFirstPortrait = false, corruptR
   }
   const child = spawn(process.execPath, ['server/index.mjs'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, PATH: bin, PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data'),
-      CRITTER_TEST_LOG: log, CRITTER_TEST_FAIL_FIRST_PORTRAIT: failFirstPortrait ? '1' : '',
+      CRITTER_CLAUDE_EXECUTABLE: path.join(bin, 'claude-unavailable'), CRITTER_TEST_LOG: log, CRITTER_TEST_FAIL_FIRST_PORTRAIT: failFirstPortrait ? '1' : '',
       CRITTER_TEST_CORRUPT_REFERENCE: corruptReference ? '1' : '', CRITTER_TEST_FAIL_DESIGN_ONCE: failDesignOnce ? '1' : '',
       CRITTER_TEST_HOLD_REVIEW: holdReview ? '1' : '', PUBLIC_ORIGIN: '' } });
   let errors = '';
@@ -61,6 +62,9 @@ async function isolatedGenerationServer(t, { failFirstPortrait = false, corruptR
     assert.equal(child.exitCode, null, errors);
     try { return await get('/api/status'); } catch { return null; }
   }, result => result?.connected);
+  const configured = await fetch(origin + '/api/settings/generation', { method: 'PUT', headers,
+    body: JSON.stringify({ provider: 'codex', model: 'fixture', effort: null }) });
+  assert.equal(configured.status, 200);
   const post = async (route, body = {}) => {
     const response = await fetch(origin + route, { method: 'POST', headers, body: JSON.stringify(body) });
     assert.equal(response.status, 202);
@@ -150,7 +154,7 @@ test('portrait-only generation saves biology without CAD and retries the same or
   assert.equal((await fetch(`${origin}/api/specimens/example-lantern/files/model.stl`)).status, 404, 'A fresh example does not generate CAD at startup');
 });
 
-test('HTTP loader estimate uses the last ten completed generations and freezes the preceding average on each job', async t => {
+test('HTTP loader estimate uses the timing window of completed generations and freezes the preceding average on each job', async t => {
   const seedJobs = Array.from({ length: 12 }, (_, index) => {
     const start = Date.UTC(2025, 0, 1, index);
     return { id: `history-${index}`, status: 'completed', kind: 'generation', designThreadId: `design-${index}`,
@@ -161,9 +165,12 @@ test('HTTP loader estimate uses the last ten completed generations and freezes t
   }
   const { origin, get, post } = await isolatedGenerationServer(t, { seedJobs });
   const before = (await get('/api/status')).generationTiming;
-  assert.equal(before.sampleCount, 10);
-  assert.equal(before.averageDurationMs, 125_000);
-  assert.equal(before.estimatedDurationMs, 125_000);
+  const previousDurations = seedJobs.filter(job => job.id.startsWith('history-')).slice(-TIMING_WINDOW)
+    .map(job => Date.parse(job.finishedAt) - Date.parse(job.createdAt));
+  const expectedAverage = previousDurations.reduce((sum, duration) => sum + duration, 0) / TIMING_WINDOW;
+  assert.equal(before.sampleCount, TIMING_WINDOW);
+  assert.equal(before.averageDurationMs, expectedAverage);
+  assert.equal(before.estimatedDurationMs, expectedAverage);
   const connected = await fetch(origin + '/api/connect', { method: 'POST', headers, body: '{}' });
   assert.equal(connected.status, 200);
   assert.deepEqual((await connected.json()).generationTiming, before);
@@ -172,10 +179,11 @@ test('HTTP loader estimate uses the last ten completed generations and freezes t
   assert.equal(job.estimatedDurationMs, before.estimatedDurationMs);
   assert.equal(job.durationMs, Date.parse(job.finishedAt) - Date.parse(job.createdAt));
   const after = (await get('/api/status')).generationTiming;
-  assert.equal(after.sampleCount, 10);
-  assert(Math.abs(after.averageDurationMs - (1_170_000 + job.durationMs) / 10) <= 1);
+  assert.equal(after.sampleCount, TIMING_WINDOW);
+  const retainedTotal = previousDurations.slice(1).reduce((sum, duration) => sum + duration, 0);
+  assert(Math.abs(after.averageDurationMs - (retainedTotal + job.durationMs) / TIMING_WINDOW) <= 1);
   assert.equal(after.estimatedDurationMs, after.averageDurationMs);
-  assert.equal((await get(`/api/jobs/${job.id}`)).estimatedDurationMs, 125_000, 'Current job keeps its original estimate');
+  assert.equal((await get(`/api/jobs/${job.id}`)).estimatedDurationMs, expectedAverage, 'Current job keeps its original estimate');
 });
 
 test('on-demand CAD uses the current image and becomes stale after a versioned edit', async t => {

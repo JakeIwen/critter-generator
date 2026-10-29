@@ -8,23 +8,28 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 // gets this app's own session cookie either way.
 export const COOKIE = '__Host-critter_session';
 const SESSION_MS = 7 * 24 * 3600_000; // Matches the Access session length.
+const SESSION_METHODS = ['passcode', 'email', 'owner'];
 const FAILURES_PER_IP = 10, FAILURES_TOTAL = 100, FAILURE_WINDOW_MS = 15 * 60_000;
 
-export function createLogin({ publicOrigin, passcode, verifyAccess, secretFile, now = () => Date.now() }) {
+export function createLogin({ publicOrigin, passcode, verifyAccess, secretFile, ownerEmail, now = () => Date.now() }) {
   const secret = loadSecret(secretFile);
   const passcodeHash = passcode ? sha256(passcode) : null;
+  // A blank owner address configures nobody as owner; an empty claim must never match it.
+  const ownerAddress = String(ownerEmail ?? '').trim().toLowerCase();
   // Passcode sessions are bound to the passcode, so changing it signs those visitors out.
   const sign = (method, expires) => createHmac('sha256', secret)
     .update(`${method}.${expires}.${method === 'passcode' ? passcodeHash?.toString('hex') : ''}`).digest('base64url');
   const failures = [];
 
-  function signedIn(req) {
+  function sessionMethod(req) {
     const value = cookies(req.headers.cookie)[COOKIE];
     const [method, expires, signature] = value?.split('.') || [];
-    if (!['passcode', 'email'].includes(method) || !(Number(expires) > now())) return false;
-    if (method === 'passcode' && !passcodeHash) return false;
-    return safeEqual(Buffer.from(signature || ''), Buffer.from(sign(method, expires)));
+    if (!SESSION_METHODS.includes(method) || !(Number(expires) > now())) return null;
+    if (method === 'passcode' && !passcodeHash) return null;
+    return safeEqual(Buffer.from(signature || ''), Buffer.from(sign(method, expires))) ? method : null;
   }
+  function signedIn(req) { return sessionMethod(req) !== null; }
+  function isOwner(req) { return sessionMethod(req) === 'owner'; }
   function startSession(res, method) {
     const expires = now() + SESSION_MS;
     res.setHeader('Set-Cookie', `${COOKIE}=${method}.${expires}.${sign(method, expires)}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; Secure; SameSite=Lax`);
@@ -55,13 +60,15 @@ export function createLogin({ publicOrigin, passcode, verifyAccess, secretFile, 
   });
   // Cloudflare Access only lets listed emails reach this path, with a signed token.
   router.get('/auth/email', async (req, res) => {
-    try { await verifyAccess(req.headers['cf-access-jwt-assertion']); } catch {
+    let claims;
+    try { claims = await verifyAccess(req.headers['cf-access-jwt-assertion']); } catch {
       return page(res, 403, { passcode: Boolean(passcodeHash), error: 'Email sign-in did not go through. Try again.' });
     }
-    startSession(res, 'email');
+    const claimEmail = String(claims.email ?? '').trim().toLowerCase();
+    startSession(res, ownerAddress && claimEmail === ownerAddress ? 'owner' : 'email');
   });
 
-  return { signedIn, challenge, router };
+  return { signedIn, isOwner, challenge, router };
 }
 
 function page(res, status, { passcode, error }) {
@@ -71,16 +78,18 @@ function page(res, status, { passcode, error }) {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Critter Generator</title>
 <style>
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f3ec;color:#263225;font:15px/1.6 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+/* Static hex mirrors of the plum tokens in src/style.css (dark theme); this page runs no script. */
+:root{color-scheme:dark;--bg:#16121b;--surface:#241f2b;--subtle:#2c2534;--border:#847c8e;--text:#eceaf0;--muted:#aea8b5;--accent:#af7cc6;--on-accent:#1b121f;--danger:#ff9088}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:15px/1.6 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 main{width:min(340px,100% - 32px)}
 h1{font:400 30px/1.2 Georgia,serif;margin:0 0 24px}
 label{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
-input{box-sizing:border-box;width:100%;padding:11px 12px;font:inherit;border:1px solid #dce0d1;background:#fafaf5;border-radius:8px;color:inherit}
-button{margin-top:14px;width:100%;padding:12px;font:inherit;font-weight:600;border:0;border-radius:8px;background:#d3df9d;color:#303c26;cursor:pointer}
-button:hover{background:#c7d88a}
-input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #799347;outline-offset:3px}
-p{margin:16px 0 0;font-size:13px;color:#777c70}a{color:#4f603b}
-.error{color:#a4552d}
+input{box-sizing:border-box;width:100%;padding:11px 12px;font:inherit;border:1px solid var(--border);background:var(--subtle);border-radius:8px;color:inherit}
+button{margin-top:14px;width:100%;padding:12px;font:inherit;font-weight:600;border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);cursor:pointer}
+button:hover{filter:brightness(1.08)}
+input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+p{margin:16px 0 0;font-size:13px;color:var(--muted)}a{color:var(--accent)}
+.error{color:var(--danger)}
 </style></head><body><main>
 <h1>Critter Generator</h1>
 ${passcode ? `<form method="post" action="/auth/passcode">

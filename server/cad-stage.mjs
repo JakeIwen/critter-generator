@@ -1,3 +1,4 @@
+import { GENERATION_STAGES } from '../shared/generation-models.mjs';
 import { z } from 'zod';
 import { GenerationAnatomy } from '../shared/specimen.mjs';
 import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
@@ -28,12 +29,12 @@ headWidth/headDepth/headHeight are head-axis multipliers, stanceWidth controls l
 points forward at -1 and back at +1. Use hex colors. No tools are needed.`;
 }
 
-export async function generateCad({ specimen, request, store, codex, trace, signal, update }) {
+export async function generateCad({ specimen, request, store, providers, trace, signal, update }) {
   const sourcePortraitVersion = portraitVersionOf(specimen);
   const validation = specimen.biology?.legCount === 0 ? CadDesign.extend({ anatomy:
     GenerationAnatomy.extend({ legPairs: z.literal(0), legLength: z.literal(0) }) }) : CadDesign;
-  update({ stage: 'cad-design', message: 'Planning a simplified sculpture from the current portrait…' });
-  const generated = await trace.run(codex, 'cad-design', { prompt: cadDesignPrompt(specimen), schema: generationOutputSchema(validation),
+  update({ stage: GENERATION_STAGES.CAD_DESIGN, message: 'Planning a simplified sculpture from the current portrait…' });
+  const generated = await trace.run(providers, GENERATION_STAGES.CAD_DESIGN, { prompt: cadDesignPrompt(specimen), schema: generationOutputSchema(validation),
     imagePaths: [store.portraitFile(specimen)], signal });
   const design = validation.parse(JSON.parse(generated.text));
   signal.throwIfAborted();

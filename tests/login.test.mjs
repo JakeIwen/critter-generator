@@ -7,12 +7,13 @@ import path from 'node:path';
 import { createLogin, COOKIE } from '../server/login.mjs';
 
 const origin = 'https://critter.example.test';
+const ownerEmail = 'owner@example.test';
 const dir = mkdtempSync(path.join(tmpdir(), 'critter-login-'));
 
 async function serve(options = {}) {
   let clock = 1_800_000_000_000;
   const login = createLogin({ publicOrigin: new URL(origin), passcode: 'open sesame', secretFile: path.join(dir, 'secret'),
-    verifyAccess: async token => { if (token !== 'good') throw new Error('bad'); return {}; }, now: () => clock, ...options });
+    verifyAccess: async token => { if (token !== 'good') throw new Error('bad'); return { email: ownerEmail }; }, now: () => clock, ...options });
   const app = express();
   app.use(login.router);
   app.use((req, res, next) => login.signedIn(req) ? next() : login.challenge(req, res));
@@ -23,7 +24,7 @@ async function serve(options = {}) {
   const request = (url, init = {}) => fetch(base + url, { redirect: 'manual', ...init });
   const enter = (passcode, headers = { origin }) => request('/auth/passcode', { method: 'POST', body: new URLSearchParams({ passcode }),
     headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers } });
-  return { request, enter, advance: ms => { clock += ms; }, close: () => server.close() };
+  return { request, enter, login, advance: ms => { clock += ms; }, close: () => server.close() };
 }
 const session = res => res.headers.get('set-cookie')?.split(';')[0];
 
@@ -77,4 +78,74 @@ test('changing the passcode ends passcode sessions but not email ones', async t 
   const after = await serve({ passcode: 'new words' }); t.after(after.close);
   assert.equal((await after.request('/', { headers: { cookie: byPasscode } })).status, 302);
   assert.equal((await after.request('/', { headers: { cookie: byEmail } })).status, 200);
+});
+
+
+test('the owner email starts a signed-in owner session', async t => {
+  const s = await serve({ ownerEmail }); t.after(s.close);
+  const ok = await s.request('/auth/email', { headers: { 'cf-access-jwt-assertion': 'good' } });
+  assert.equal(ok.status, 303);
+  assert.match(session(ok), new RegExp(`^${COOKIE}=owner\\.`));
+  const req = { headers: { cookie: session(ok) } };
+  assert.equal(s.login.signedIn(req), true);
+  assert.equal(s.login.isOwner(req), true);
+  assert.equal((await s.request('/', { headers: req.headers })).status, 200);
+});
+
+test('another email starts an ordinary email session', async t => {
+  const s = await serve({ ownerEmail, verifyAccess: async () => ({ email: 'visitor@example.test' }) }); t.after(s.close);
+  const ok = await s.request('/auth/email', { headers: { 'cf-access-jwt-assertion': 'good' } });
+  assert.match(session(ok), new RegExp(`^${COOKIE}=email\\.`));
+  const req = { headers: { cookie: session(ok) } };
+  assert.equal(s.login.signedIn(req), true);
+  assert.equal(s.login.isOwner(req), false);
+});
+
+test('owner email matching ignores case and surrounding whitespace', async t => {
+  const s = await serve({ ownerEmail: '  OWNER@Example.Test  ',
+    verifyAccess: async () => ({ email: '  Owner@EXAMPLE.test  ' }) }); t.after(s.close);
+  const ok = await s.request('/auth/email', { headers: { 'cf-access-jwt-assertion': 'good' } });
+  assert.match(session(ok), new RegExp(`^${COOKIE}=owner\\.`));
+  const req = { headers: { cookie: session(ok) } };
+  assert.equal(s.login.signedIn(req), true);
+  assert.equal(s.login.isOwner(req), true);
+});
+
+test('passcode sessions never grant owner access', async t => {
+  const s = await serve({ ownerEmail }); t.after(s.close);
+  const ok = await s.enter('open sesame');
+  assert.match(session(ok), new RegExp(`^${COOKIE}=passcode\\.`));
+  const req = { headers: { cookie: session(ok) } };
+  assert.equal(s.login.signedIn(req), true);
+  assert.equal(s.login.isOwner(req), false);
+});
+
+test('changing an email cookie method to owner invalidates the session', async t => {
+  const s = await serve(); t.after(s.close);
+  const ok = await s.request('/auth/email', { headers: { 'cf-access-jwt-assertion': 'good' } });
+  const cookie = session(ok).replace('=email.', '=owner.');
+  const req = { headers: { cookie } };
+  assert.equal(s.login.signedIn(req), false);
+  assert.equal(s.login.isOwner(req), false);
+  assert.equal((await s.request('/', { headers: req.headers })).status, 302);
+});
+
+test('without an owner email the matching email stays an ordinary session', async t => {
+  const s = await serve(); t.after(s.close);
+  const ok = await s.request('/auth/email', { headers: { 'cf-access-jwt-assertion': 'good' } });
+  assert.match(session(ok), new RegExp(`^${COOKIE}=email\\.`));
+  const req = { headers: { cookie: session(ok) } };
+  assert.equal(s.login.signedIn(req), true);
+  assert.equal(s.login.isOwner(req), false);
+});
+
+test('owner sessions expire after seven days', async t => {
+  const s = await serve({ ownerEmail }); t.after(s.close);
+  const ok = await s.request('/auth/email', { headers: { 'cf-access-jwt-assertion': 'good' } });
+  const req = { headers: { cookie: session(ok) } };
+  assert.equal(s.login.isOwner(req), true);
+  s.advance(7 * 24 * 3600_000);
+  assert.equal(s.login.signedIn(req), false);
+  assert.equal(s.login.isOwner(req), false);
+  assert.equal((await s.request('/', { headers: req.headers })).status, 302);
 });

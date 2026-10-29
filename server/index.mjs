@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { example } from '../shared/specimen.mjs';
 import { Codex, safeError } from './codex.mjs';
+import { Claude } from './claude.mjs';
+import { ModelCatalog } from './model-catalog.mjs';
+import { PROVIDERS } from '../shared/generation-models.mjs';
+import { createSettingsRoutes } from './settings-routes.mjs';
 import { GenerationJobs } from './generation-jobs.mjs';
 import { createSpecimenRoutes } from './specimen-routes.mjs';
 import { Store } from './store.mjs';
@@ -16,7 +20,12 @@ const distRoot = process.env.CRITTER_DIST_DIR || path.join(root, 'dist');
 const port = Number(process.env.PORT || 4329);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('PORT must be an integer from 1024 to 65535.');
 const store = new Store(process.env.CRITTER_DATA_DIR || path.join(root, '.local'));
-const codex = new Codex(path.join(store.root, 'workspace'));
+const workspace = path.join(store.root, 'workspace');
+const codex = new Codex(workspace);
+const claude = new Claude(workspace);
+const providers = { [PROVIDERS.CODEX]: codex, [PROVIDERS.CLAUDE]: claude };
+const catalog = new ModelCatalog({ discoverers: Object.fromEntries(
+  Object.entries(providers).map(([id, provider]) => [id, () => provider.models()])) });
 const app = express();
 const stopToken = randomUUID();
 app.disable('x-powered-by');
@@ -27,7 +36,8 @@ const localHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
 const publicOrigin = process.env.PUBLIC_ORIGIN ? new URL(process.env.PUBLIC_ORIGIN) : null;
 const login = publicOrigin ? createLogin({ publicOrigin, passcode: process.env.CRITTER_PASSCODE,
   verifyAccess: createAccessVerifier({ teamDomain: process.env.ACCESS_TEAM_DOMAIN, audience: process.env.ACCESS_AUD }),
-  secretFile: path.join(store.root, 'session-secret') }) : null;
+  ownerEmail: process.env.CRITTER_OWNER_EMAIL, secretFile: path.join(store.root, 'session-secret') }) : null;
+const isOwner = req => login ? login.isOwner(req) : true;
 if (publicOrigin) origins.add(publicOrigin.origin);
 const isPublicHost = req => publicOrigin && req.headers.host === publicOrigin.host;
 const isLoginPath = req => req.path === '/auth' || req.path.startsWith('/auth/');
@@ -50,7 +60,7 @@ if (login) app.use((req, res, next) => isPublicHost(req) ? login.router(req, res
 app.use(express.json({ limit: '64kb' }));
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
-const jobs = new GenerationJobs({ store, codex });
+const jobs = new GenerationJobs({ store, providers, catalog });
 if (!store.get('specimens', 'example-lantern')) {
   store.save('specimens', 'example-lantern', { ...example, anatomy: null,
     id: 'example-lantern', demo: true, image: false, print: null,
@@ -65,15 +75,19 @@ if (!exampleRecord.image && existsSync(examplePortrait)) {
   store.save('specimens', 'example-lantern', { ...exampleRecord, image: true, imageError: null });
 }
 
-const connectionStatus = () => ({ ...codex.state, activeJob: jobs.current?.job.id || null, generationTiming: store.generationTiming() });
-app.get('/api/status', (_req, res) => res.json(connectionStatus()));
+const connectionStatus = req => ({ ...codex.state, owner: isOwner(req),
+  generation: (({ provider, model, effort }) => ({ provider, model, effort }))(store.generationModel()),
+  connection: Object.fromEntries(Object.entries(providers).map(([id, provider]) => [id, provider.state])),
+  activeJob: jobs.current?.job.id || null, generationTiming: store.generationTiming() });
+app.get('/api/status', (req, res) => res.json(connectionStatus(req)));
 app.post('/api/shutdown', (req, res) => {
   if (req.headers['x-critter-stop-token'] !== stopToken) return res.status(403).json({ error: 'Invalid instance token.' });
   res.json({ stopped: true }); setTimeout(shutdown, 50);
 });
-app.post('/api/connect', async (_req, res) => {
-  try { await codex.connect(); res.json(connectionStatus()); } catch (e) { res.status(503).json({ error: safeError(e) }); }
+app.post('/api/connect', async (req, res) => {
+  try { await codex.connect(); res.json(connectionStatus(req)); } catch (e) { res.status(503).json({ error: safeError(e) }); }
 });
+app.use(createSettingsRoutes({ store, catalog, isOwner }));
 app.use(createSpecimenRoutes({ store, jobs }));
 
 app.use(express.static(distRoot));
@@ -85,9 +99,9 @@ server.once('listening', () => {
   console.log(`Critter Generator: http://127.0.0.1:${port}`);
   void codex.connect().catch(() => {});
 });
-server.on('error', e => { console.error(safeError(e)); codex.close(); process.exit(1); });
+server.on('error', e => { console.error(safeError(e)); codex.close(); claude.close(); process.exit(1); });
 function shutdown() {
-  jobs.current?.controller.abort(); codex.close();
+  jobs.current?.controller.abort(); codex.close(); claude.close();
   try { unlinkSync(path.join(store.root, 'server.json')); } catch {}
   server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref();
 }

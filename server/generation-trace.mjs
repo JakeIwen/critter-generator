@@ -1,3 +1,4 @@
+import { providerForStage } from '../shared/generation-models.mjs';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -47,7 +48,7 @@ export class GenerationTrace {
   constructor(store, job, context = {}) {
     this.store = store;
     this.value = { version: TRACE_VERSION, jobId: job.id, kind: job.kind, specimenId: job.specimenId,
-      createdAt: job.createdAt, templateVersion: GENERATION_PROMPT_VERSION,
+      createdAt: job.createdAt, generation: job.generation, templateVersion: GENERATION_PROMPT_VERSION,
       buildRevision: process.env.CRITTER_BUILD_REVISION || null, ...context, steps: [] };
     this.save();
   }
@@ -55,16 +56,22 @@ export class GenerationTrace {
     Object.assign(this.value, changes);
     writeTrace(this.store, this.value);
   }
-  async run(codex, stage, options) {
-    const step = { stage, attempt: this.value.steps.filter(item => item.stage === stage).length + 1,
+  async run(providers, stage, options) {
+    const selection = this.value.generation;
+    const provider = providerForStage(stage, selection), client = providers[provider];
+    const selected = provider === selection.provider;
+    const step = { stage, provider, orchestrationModel: selected ? selection.model : null,
+      reasoningEffort: selected ? selection.effort : null, attempt: this.value.steps.filter(item => item.stage === stage).length + 1,
       startedAt: new Date().toISOString(), status: 'running',
       input: [{ type: 'text', text: options.prompt }, ...imageReferences(options.imagePaths ?? [], this.store.root)],
       outputSchema: options.schema ?? null, imageGenerationEnabled: Boolean(options.image) };
     this.value.steps.push(step); this.save();
     try {
-      await codex.connect();
-      step.orchestrationModel = codex.state.model; step.reasoningEffort = codex.effort;
-      const result = await codex.run({ ...options, onThread: threadId => {
+      if (!client) throw new Error('The selected generation provider is not configured.');
+      await client.connect?.();
+      step.orchestrationModel = selected ? selection.model : client.state.model;
+      step.reasoningEffort = selected ? selection.effort : client.effort ?? null;
+      const result = await client.run({ ...options, model: step.orchestrationModel, effort: step.reasoningEffort, onThread: threadId => {
         step.threadId = threadId; this.save(); options.onThread?.(threadId);
       } });
       Object.assign(step, { status: 'completed', responseText: result.text,

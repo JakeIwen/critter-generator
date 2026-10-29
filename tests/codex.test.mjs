@@ -42,3 +42,65 @@ test('image failures are explicit and credentials are redacted from errors', asy
   await assert.rejects(imageBytes([{result:'not an image',failure:null}]),/no image/);
   assert.equal(safeError(new Error('sk-test_123 Bearer abc.def')),'[redacted] Bearer [redacted]');
 });
+
+class ProtocolFixture extends Codex {
+  constructor() { super('/fixture'); this.requests = []; }
+  async open() {
+    this.mcpNames = [];
+    const models = await this.listModels();
+    this.effort = 'medium'; this.state = { connected: true, model: models[0].id, reason: null };
+    return this.state;
+  }
+  async rpc(method, params) {
+    this.requests.push({ method, params });
+    if (method === 'model/list') return params.cursor ? { data: [{ model: 'other-model', displayName: 'Other',
+      description: 'Another model', supportedReasoningEfforts: [], defaultReasoningEffort: null }], nextCursor: null } : {
+      data: [{ model: 'gpt-6-astra', displayName: 'Astra', description: 'Astra model',
+        supportedReasoningEfforts: [{ reasoningEffort: 'medium' }, { reasoningEffort: 'max' }], defaultReasoningEffort: 'medium', isDefault: true }], nextCursor: 'page-2',
+    };
+    if (method === 'thread/start') return { thread: { id: 'selected-thread' }, sandbox: { type: 'readOnly' } };
+    if (method === 'turn/start') {
+      queueMicrotask(() => {
+        this.receive({ method: 'item/completed', params: { threadId: params.threadId, item: { type: 'agentMessage', text: '{"ok":true}' } } });
+        this.receive({ method: 'turn/completed', params: { threadId: params.threadId, turn: { status: 'completed' } } });
+      });
+      return { turn: { id: 'turn-1' } };
+    }
+    return {};
+  }
+}
+
+test('Codex lists every visible model page and maps model metadata', async () => {
+  const client = new ProtocolFixture();
+  const models = await client.models();
+  assert.deepEqual(models, [
+    { id: 'gpt-6-astra', label: 'Astra', description: 'Astra model', efforts: ['medium', 'max'], defaultEffort: 'medium', isDefault: true },
+    { id: 'other-model', label: 'Other', description: 'Another model', efforts: [], defaultEffort: null, isDefault: false },
+  ]);
+  for (const request of client.requests) assert.equal(request.params.includeHidden, false);
+  assert(client.requests.some(request => request.params.cursor === 'page-2'));
+});
+
+test('Codex sends per-call model and effort to both thread and turn and rejects missing models', async () => {
+  const client = new ProtocolFixture();
+  const result = await client.run({ prompt: 'Describe', schema: { type: 'object' }, model: 'gpt-6-astra', effort: 'max' });
+  assert.equal(result.text, '{"ok":true}');
+  const thread = client.requests.find(request => request.method === 'thread/start').params;
+  const turn = client.requests.find(request => request.method === 'turn/start').params;
+  assert.equal(thread.model, 'gpt-6-astra'); assert.equal(thread.config.model_reasoning_effort, 'max');
+  assert.equal(turn.model, 'gpt-6-astra'); assert.equal(turn.effort, 'max');
+  const count = client.requests.length;
+  await assert.rejects(client.run({ prompt: 'Describe', model: 'missing', effort: 'max' }),
+    /^Error: Selected model missing is not available to this Codex account\. Choose another in Settings\.$/);
+  assert.equal(client.requests.length, count, 'Unavailable selections never begin a thread');
+});
+
+
+test('models without reasoning effort omit the config override rather than passing a null TOML value', async () => {
+  const client = new ProtocolFixture();
+  await client.run({ prompt: 'Describe', model: 'other-model', effort: null });
+  const thread = client.requests.find(request => request.method === 'thread/start').params;
+  assert.equal(Object.hasOwn(thread.config, 'model_reasoning_effort'), false);
+  const turn = client.requests.find(request => request.method === 'turn/start').params;
+  assert.equal(turn.model, 'other-model'); assert.equal(turn.effort, null);
+});

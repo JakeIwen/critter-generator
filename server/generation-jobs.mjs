@@ -1,3 +1,4 @@
+import { PROVIDERS, providerLabels, GENERATION_STAGES } from '../shared/generation-models.mjs';
 import { randomUUID } from 'node:crypto';
 import { createAnatomyPlan, plannedDesign } from '../shared/anatomy-plan.mjs';
 import { illustrationPrompt } from '../shared/specimen.mjs';
@@ -11,8 +12,8 @@ import { GenerationTrace, interruptTrace } from './generation-trace.mjs';
 const DESIGN_ATTEMPTS = 3;
 
 export class GenerationJobs {
-  constructor({ store, codex }) {
-    this.store = store; this.codex = codex; this.current = null;
+  constructor({ store, providers, codex, catalog = null }) {
+    this.store = store; this.providers = providers ?? { [PROVIDERS.CODEX]: codex }; this.catalog = catalog; this.current = null;
     for (const job of store.list('jobs')) {
       if (['queued', 'running'].includes(job.status)) {
         this.update(job, { status: 'interrupted', message: 'The server restarted. Completed specimen files have been kept.',
@@ -30,8 +31,9 @@ export class GenerationJobs {
   start({ settings, existing = null, plan = null, instructions = '', cadRequest = null,
     kind = existing ? JOB_KINDS.PORTRAIT : JOB_KINDS.GENERATION }) {
     if (this.current) throw Object.assign(new Error('A generation is already running.'), { status: 409, jobId: this.current.job.id });
-    const job = { id: randomUUID(), kind, settings, status: 'queued', stage: 'design',
-      message: 'Connecting to Codex…', createdAt: new Date().toISOString(), specimenId: existing?.id ?? null,
+    const { provider, model, effort } = this.store.generationModel();
+    const job = { id: randomUUID(), kind, settings, generation: { provider, model, effort }, status: 'queued', stage: GENERATION_STAGES.DESIGN,
+      message: `Connecting to ${providerLabels[provider]}…`, createdAt: new Date().toISOString(), specimenId: existing?.id ?? null,
       estimatedDurationMs: kind === JOB_KINDS.CAD ? null : this.store.generationTiming().estimatedDurationMs };
     if (existing?.variation || plan) job.variation = existing?.variation ?? plan;
     const controller = new AbortController();
@@ -56,11 +58,11 @@ export class GenerationJobs {
     let result;
     for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {
       try {
-        result = await trace.run(this.codex, 'design', { prompt: design.prompt, schema: design.schema, signal,
+        result = await trace.run(this.providers, GENERATION_STAGES.DESIGN, { prompt: design.prompt, schema: design.schema, signal,
           onThread: designThreadId => this.update(job, { designThreadId }) }); break;
       } catch (error) {
         if (error.code !== 'runaway_output' || attempt === DESIGN_ATTEMPTS || signal.aborted) throw error;
-        this.update(job, { message: `Codex stalled; trying again (attempt ${attempt + 1} of ${DESIGN_ATTEMPTS})…` });
+        this.update(job, { message: `${providerLabels[job.generation.provider]} stalled; trying again (attempt ${attempt + 1} of ${DESIGN_ATTEMPTS})…` });
       }
     }
     signal.throwIfAborted();
@@ -73,7 +75,7 @@ export class GenerationJobs {
   }
   async review(specimen, trace, signal, image) {
     try {
-      const result = await trace.run(this.codex, image ? 'image-review' : 'design-review', {
+      const result = await trace.run(this.providers, image ? GENERATION_STAGES.IMAGE_REVIEW : GENERATION_STAGES.DESIGN_REVIEW, {
         prompt: reviewPrompt(specimen, { image }), schema: reviewSchema, signal,
         imagePaths: image ? [this.store.portraitFile(specimen)] : [] });
       return { status: REVIEW_STATUS.REVIEWED, ...RequirementReview.parse(JSON.parse(result.text)) };
@@ -86,8 +88,8 @@ export class GenerationJobs {
     const kind = instructions ? PORTRAIT_KINDS.EDIT : specimen.image ? PORTRAIT_KINDS.REGENERATE : PORTRAIT_KINDS.GENERATION;
     const imagePaths = specimen.image ? [this.store.portraitFile(specimen)] : [];
     const designReview = specimen.settings.review ? await this.review(specimen, trace, signal, false) : null;
-    this.update(job, { stage: 'image', message: instructions ? 'Refining the portrait…' : 'Painting the specimen portrait…' });
-    const result = await trace.run(this.codex, 'image', { prompt: illustrationPrompt(specimen, {
+    this.update(job, { stage: GENERATION_STAGES.IMAGE, message: instructions ? 'Refining the portrait…' : 'Painting the specimen portrait…' });
+    const result = await trace.run(this.providers, GENERATION_STAGES.IMAGE, { prompt: illustrationPrompt(specimen, {
       editInstructions: instructions, referenceImage: Boolean(specimen.image) }), image: true, imagePaths, signal,
     onThread: imageThreadId => this.update(job, { imageThreadId }),
     onProgress: message => this.update(job, { message }) });
@@ -114,9 +116,12 @@ export class GenerationJobs {
       trace = new GenerationTrace(this.store, job, { settings, instructions, cadRequest,
         sourcePortraitVersion: existing?.image ? portraitVersionOf(existing) : null });
       this.update(job, { status: 'running' });
+      const selectionError = await this.catalog?.validateSelection(job.generation);
+      if (selectionError) throw new Error(selectionError);
+      signal.throwIfAborted();
       if (!existing) specimen = await this.design(job, settings, plan, trace, signal);
       if (job.kind === JOB_KINDS.CAD) {
-        specimen = await generateCad({ specimen, request: cadRequest, store: this.store, codex: this.codex, trace, signal,
+        specimen = await generateCad({ specimen, request: cadRequest, store: this.store, providers: this.providers, trace, signal,
           update: changes => this.update(job, changes) });
         specimen = this.saveSpecimen({ ...specimen, cadError: null }, job);
       } else specimen = await this.portrait(specimen, job, instructions, trace, signal);

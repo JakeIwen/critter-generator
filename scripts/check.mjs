@@ -43,7 +43,8 @@ async function offlineCodexEnvironment() {
   const marker = path.join(scratch, 'offline-codex-used');
   await mkdir(bin);
   await writeFile(path.join(bin, 'codex'), '#!/bin/sh\nprintf fixture > "$CRITTER_CHECK_MARKER"\nexit 1\n', { mode: 0o700 });
-  return { PATH: bin, CRITTER_CHECK_MARKER: marker };
+  // An explicit missing Claude executable never falls back to a real CLI on PATH.
+  return { PATH: bin, CRITTER_CHECK_MARKER: marker, CRITTER_CLAUDE_EXECUTABLE: path.join(bin, 'claude-missing') };
 }
 async function verifyOfflineCodex(marker) {
   for (let attempt = 0; attempt < 50; attempt += 1) {

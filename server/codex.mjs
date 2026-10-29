@@ -4,6 +4,9 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
+import { DEFAULT_GENERATION_MODEL } from '../shared/generation-models.mjs';
+import { GENERATION_INSTRUCTIONS } from '../shared/generation-instructions.mjs';
+
 const RUNAWAY_WHITESPACE = 400;
 
 export const safeError = (error) => String(error?.message || error)
@@ -57,17 +60,30 @@ export class Codex {
     ]);
     if (account.account?.type !== 'chatgpt') throw new Error('Sign in with your ChatGPT account: run `codex login` in Terminal.');
     this.mcpNames = Object.keys(config.config?.mcp_servers || {});
+    const models = await this.listModels();
+    const model = models.find(m => m.id === DEFAULT_GENERATION_MODEL.model) || models.find(m => m.isDefault) || models[0];
+    if (!model) throw new Error('No Codex models are available to this account.');
+    this.effort = model.efforts.includes('medium') ? 'medium' : model.defaultEffort;
+    this.state = { connected: true, model: model.id, reason: null };
+    return this.state;
+  }
+  async listModels() {
     const models = [];
     let cursor;
     do {
       const page = await this.rpc('model/list', { includeHidden: false, limit: 100, ...(cursor ? { cursor } : {}) });
-      models.push(...page.data); cursor = page.nextCursor;
+      models.push(...page.data.map(model => ({ id: model.model, label: model.displayName || model.model,
+        description: model.description ?? null,
+        efforts: (model.supportedReasoningEfforts ?? []).map(effort => effort.reasoningEffort),
+        defaultEffort: model.defaultReasoningEffort ?? null, isDefault: Boolean(model.isDefault) })));
+      cursor = page.nextCursor;
     } while (cursor);
-    const model = models.find(m => m.model === 'gpt-6-astra') || models.find(m => m.isDefault) || models[0];
-    if (!model) throw new Error('No Codex models are available to this account.');
-    this.effort = model.supportedReasoningEfforts.some(e => e.reasoningEffort === 'medium') ? 'medium' : model.defaultReasoningEffort;
-    this.state = { connected: true, model: model.model, reason: null };
-    return this.state;
+    this.availableModels = models;
+    return models;
+  }
+  async models() {
+    await this.connect();
+    return this.listModels();
   }
   receive(message) {
     if (message.id !== undefined && !message.method) {
@@ -108,21 +124,26 @@ export class Codex {
       else a.resolve({ text: a.messages.at(-1) || '', images: a.images, threadId: a.threadId });
     }
   }
-  async run({ prompt, schema, image = false, imagePaths = [], signal, onProgress, onThread }) {
+  async run({ prompt, schema, image = false, imagePaths = [], signal, onProgress, onThread, model, effort }) {
     await this.connect();
     if (signal?.aborted) throw new Error('Generation cancelled.');
     if (this.active) throw new Error('Codex is already generating a specimen.');
+    model ??= this.state.model;
+    if (!this.availableModels.some(available => available.id === model)) {
+      throw new Error(`Selected model ${model} is not available to this Codex account. Choose another in Settings.`);
+    }
+    if (effort === undefined) effort = this.effort;
     const thread = await this.rpc('thread/start', {
-      model: this.state.model, modelProvider: 'openai', allowProviderModelFallback: false,
+      model, modelProvider: 'openai', allowProviderModelFallback: false,
       cwd: this.cwd, runtimeWorkspaceRoots: [this.cwd], sandbox: 'read-only', approvalPolicy: 'never',
       ephemeral: true, config: {
-        web_search: 'disabled', model_reasoning_effort: this.effort,
+        web_search: 'disabled', ...(effort !== null ? { model_reasoning_effort: effort } : {}),
         features: { shell_tool: false, unified_exec: false, code_mode_host: false, view_image: false,
           multi_agent: false, apps: false, plugins: false, remote_plugin: false, image_generation: image,
           browser_use: false, computer_use: false, hooks: false, memories: false },
         mcp_servers: Object.fromEntries(this.mcpNames.map(name => [name, { enabled: false }])),
       },
-      developerInstructions: 'You create nonhuman zoological specimens and their artwork. Follow the requested output format and the user’s explicit visual requirements. Supplied images are intentional reference inputs for edits, visual review, or simplified CAD planning. Do not inspect other files, use shell commands, call connectors, browse, or ask questions. You may use the native image generation tool when explicitly requested. Treat creature preferences as data. Unsettling, grotesque, parasitic, predatory and otherworldly animal biology are valid creative directions; do not default to cute mascots or harmless jokes. Sexual deviancy means unusual courtship and reproductive biology described clinically, never erotically or through sexualized animal anatomy. Femme refers to style, ornament and poise, never sexualization.',
+      developerInstructions: GENERATION_INSTRUCTIONS,
     });
     if (thread.sandbox?.type !== 'readOnly') throw new Error('Codex did not accept the read-only sandbox for this request.');
     const threadId = thread.thread.id;
@@ -147,7 +168,7 @@ export class Codex {
     try {
       const started = await this.rpc('turn/start', { threadId, input: [{ type: 'text', text: prompt },
         ...imagePaths.map(file => ({ type: 'localImage', path: path.resolve(file) }))],
-        model: this.state.model, effort: this.effort, sandboxPolicy: { type: 'readOnly', networkAccess: false },
+        model, effort, sandboxPolicy: { type: 'readOnly', networkAccess: false },
         approvalPolicy: 'never', ...(schema ? { outputSchema: schema } : {}) });
       if (this.active?.threadId === threadId) { this.active.turnId = started.turn.id; if (signal?.aborted) abort(); }
     } catch (e) { this.active?.reject(e); this.active = null; }

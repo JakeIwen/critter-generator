@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, exists
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { DatabaseSync } from 'node:sqlite';
+import { DEFAULT_GENERATION_MODEL, GENERATION_MODEL_KEY } from '../shared/generation-models.mjs';
 import { generationTimingFromJobs } from '../shared/generation-timing.mjs';
 import { modelFilename, portraitFilename, portraitVersionOf } from '../shared/specimen-assets.mjs';
 import { normalizePortrait, publishPortrait } from './portrait-assets.mjs';
@@ -55,16 +56,22 @@ export class Store {
     if (!['specimens', 'jobs'].includes(kind)) throw new Error('Invalid record type.');
     return this.db.prepare(`SELECT data FROM ${kind} ORDER BY created_at DESC`).all().map(row => JSON.parse(row.data));
   }
-  generationTiming() {
-    return JSON.parse(this.db.prepare('SELECT value FROM app_metadata WHERE key=?').get(GENERATION_TIMING_KEY).value);
+  metadata(key, fallback = null) {
+    const row = this.db.prepare('SELECT value FROM app_metadata WHERE key=?').get(key);
+    return row ? JSON.parse(row.value) : structuredClone(fallback);
   }
+  setMetadata(key, value) {
+    this.db.prepare('INSERT INTO app_metadata(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+      .run(key, JSON.stringify(value));
+    return value;
+  }
+  generationModel() { return this.metadata(GENERATION_MODEL_KEY, DEFAULT_GENERATION_MODEL); }
+  generationTiming() { return this.metadata(GENERATION_TIMING_KEY); }
   refreshGenerationTiming() {
     const jobs = this.db.prepare("SELECT data FROM jobs WHERE json_extract(data, '$.status') = 'completed'")
       .all().map(row => JSON.parse(row.data));
     const timing = generationTimingFromJobs(jobs);
-    this.db.prepare('INSERT INTO app_metadata(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
-      .run(GENERATION_TIMING_KEY, JSON.stringify(timing));
-    return timing;
+    return this.setMetadata(GENERATION_TIMING_KEY, timing);
   }
   async model(id, anatomy, height, baseplate = true, options = {}) {
     const result = await new Promise((resolve, reject) => {
