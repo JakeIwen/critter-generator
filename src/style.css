@@ -391,8 +391,11 @@ summary{cursor:pointer;line-height:1.6;font-size:11px;font-weight:600}
 }
 
 .topbar-tools{display:flex;align-items:center;gap:14px}
-.theme-toggle{display:grid;place-items:center;min-width:36px;min-height:36px;border-radius:7px;color:var(--muted);flex-shrink:0}
-.theme-toggle:hover,.theme-toggle:focus-visible{color:var(--accent);background:var(--accent-light)}
+.theme-switch{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--border);border-radius:999px;background:var(--subtle);flex-shrink:0}
+.theme-switch button{display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;min-height:32px;border-radius:999px;font-size:11px;color:var(--muted)}
+.theme-switch button[aria-checked="true"]{background:var(--accent-light);color:var(--text)}
+.theme-switch button:not([aria-checked="true"]):hover{color:var(--accent)}
+.theme-switch button:focus-visible{outline-offset:2px}
 .field-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600}
 .optional-tag{font-size:8px;letter-spacing:1.1px;color:var(--muted);font-weight:500}
 .inspiration-details{min-width:0;border-top:1px solid var(--border);padding-top:10px}
@@ -412,7 +415,7 @@ summary{cursor:pointer;line-height:1.6;font-size:11px;font-weight:600}
   .topbar nav{flex:1;min-width:0;justify-content:center;gap:8px;min-height:var(--control-height)}
   .topbar .nav{font-size:10px;padding:0}
   .topbar-tools{margin-left:auto;gap:8px}
-  .theme-toggle{min-width:var(--control-height);min-height:var(--control-height)}
+  .theme-switch button{min-width:44px;min-height:44px}
   .nav,.presets button,.view-tabs button,.status-box button,.stage-bottom button,.notes-downloads a,.notes-downloads button{min-height:var(--control-height)}
   .controls .section-heading{margin-bottom:12px}
   .height-control input{min-height:var(--control-height)}
@@ -435,7 +438,15 @@ summary{cursor:pointer;line-height:1.6;font-size:11px;font-weight:600}
   .action-heading .button{white-space:normal}
 }
 
-@media(max-width:360px){.topbar{flex-wrap:wrap}.topbar nav{order:3;flex-basis:100%}}
+@media(max-width:600px){
+  .topbar{flex-wrap:wrap}
+  .topbar nav{order:3;flex-basis:100%}
+  .topbar-tools{gap:6px}
+  .theme-switch button{padding:6px}
+  .theme-label,.connection span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+  .connection{display:flex;justify-content:center;min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:7px;gap:4px}
+  .connection svg{margin-left:3px}
+}
 /* Compact inspiration chips retain full finger targets on touch devices. */
 @media(pointer:coarse){.animal-chip{min-height:var(--control-height)}}
 

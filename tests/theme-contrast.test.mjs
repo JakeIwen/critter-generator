@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { THEME_BACKGROUND, applyStoredTheme, mountThemeToggle } from '../src/theme.js';
-import { icon } from '../src/icons.js';
 
 const css = await readFile(new URL('../src/style.css', import.meta.url), 'utf8');
 const declarations = block => Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(([, key, value]) => [key, value]));
@@ -51,10 +50,16 @@ for (const [theme, tokens] of Object.entries({ dark: base, light: { ...base, ...
 function browserFixture(t, stored, blocked = false) {
   const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
   const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
-  const attributes = new Map(), storage = new Map(stored === undefined ? [] : [['critter-theme', stored]]);
-  let click;
+  const storage = new Map(stored === undefined ? [] : [['critter-theme', stored]]);
+  let focused = null;
   const meta = { setAttribute(name, value) { this[name] = value; } };
-  const button = { setAttribute: (name, value) => attributes.set(name, value), addEventListener: (name, fn) => { assert.equal(name, 'click'); click = fn; } };
+  const buttons = ['light', 'dark'].map(theme => {
+    const attributes = new Map(), listeners = {};
+    return { dataset: { theme }, attributes, listeners,
+      setAttribute: (name, value) => attributes.set(name, value),
+      addEventListener: (name, fn) => { listeners[name] = fn; }, focus() { focused = theme; } };
+  });
+  const group = { querySelectorAll: () => buttons };
   const document = { documentElement: { dataset: {} }, querySelector: selector => { assert.equal(selector, 'meta[name="theme-color"]'); return meta; } };
   Object.defineProperty(globalThis, 'document', { configurable: true, value: document });
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() {
@@ -65,46 +70,66 @@ function browserFixture(t, stored, blocked = false) {
     if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument); else delete globalThis.document;
     if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage); else delete globalThis.localStorage;
   });
-  return { document, meta, button, attributes, storage, click: () => click() };
+  return { document, meta, group, buttons, storage, get focused() { return focused; },
+    click(theme) { buttons.find(button => button.dataset.theme === theme).listeners.click(); },
+    key(theme, key) {
+      let prevented = false;
+      buttons.find(button => button.dataset.theme === theme).listeners.keydown({ key, preventDefault() { prevented = true; } });
+      return prevented;
+    } };
+
+}
+
+function assertSelection(view, theme) {
+  for (const button of view.buttons) {
+    assert.equal(button.attributes.get('aria-checked'), String(button.dataset.theme === theme));
+    assert.equal(button.tabIndex, button.dataset.theme === theme ? 0 : -1);
+  }
 }
 
 for (const stored of [undefined, 'invalid', 'dark', 'light']) {
-  test(`stored theme ${stored ?? '(missing)'} applies a valid theme and accessible button`, t => {
+  test(`stored theme ${stored ?? '(missing)'} applies a valid theme and accessible radios`, t => {
     const view = browserFixture(t, stored);
-    applyStoredTheme();
-    mountThemeToggle(view.button);
+    applyStoredTheme(); mountThemeToggle(view.group);
     const theme = stored === 'light' ? 'light' : 'dark';
     assert.equal(view.document.documentElement.dataset.theme, theme);
     assert.equal(view.meta.content, THEME_BACKGROUND[theme]);
-    assert.equal(view.attributes.get('aria-pressed'), String(theme === 'light'));
-    assert.equal(view.attributes.get('aria-label'), `Switch to ${theme === 'light' ? 'dark' : 'light'} theme`);
-    assert.equal(view.attributes.get('title'), view.attributes.get('aria-label'));
-    assert.equal(view.button.innerHTML, icon(theme === 'light' ? 'moon' : 'sun', 16));
+    assertSelection(view, theme);
   });
 }
 
-test('toggle persists each theme and keeps metadata, icon and accessible name synchronized', t => {
+test('switch persists each selected theme and keeps metadata and radio state synchronized', t => {
   const view = browserFixture(t);
-  applyStoredTheme(); mountThemeToggle(view.button);
-  for (const theme of ['light', 'dark']) {
-    view.click();
+  applyStoredTheme(); mountThemeToggle(view.group);
+  for (const theme of ['light', 'light', 'dark']) {
+    view.click(theme);
     assert.equal(view.document.documentElement.dataset.theme, theme);
     assert.equal(view.storage.get('critter-theme'), theme);
     assert.equal(view.meta.content, THEME_BACKGROUND[theme]);
-    assert.equal(view.attributes.get('aria-pressed'), String(theme === 'light'));
-    assert.equal(view.attributes.get('aria-label'), `Switch to ${theme === 'light' ? 'dark' : 'light'} theme`);
-    assert.equal(view.button.innerHTML, icon(theme === 'light' ? 'moon' : 'sun', 16));
+    assertSelection(view, theme);
     applyStoredTheme();
     assert.equal(view.document.documentElement.dataset.theme, theme);
   }
 });
 
+test('arrow keys select and focus the next radio, wrapping in both directions', t => {
+  const view = browserFixture(t);
+  applyStoredTheme(); mountThemeToggle(view.group);
+  for (const [from, key, next] of [['dark', 'ArrowRight', 'light'], ['light', 'ArrowLeft', 'dark'], ['dark', 'ArrowLeft', 'light'], ['light', 'ArrowRight', 'dark']]) {
+    assert.equal(view.key(from, key), true);
+    assertSelection(view, next); assert.equal(view.focused, next);
+    assert.equal(view.storage.get('critter-theme'), next);
+  }
+  assert.equal(view.key('dark', 'Tab'), false);
+  assertSelection(view, 'dark');
+});
+
 test('blocked storage keeps startup and theme switching usable', t => {
   const view = browserFixture(t, undefined, true);
-  applyStoredTheme(); mountThemeToggle(view.button);
+  applyStoredTheme(); mountThemeToggle(view.group);
   assert.equal(view.document.documentElement.dataset.theme, 'dark');
-  view.click();
+  view.click('light');
   assert.equal(view.document.documentElement.dataset.theme, 'light');
-  assert.equal(view.attributes.get('aria-label'), 'Switch to dark theme');
+  assertSelection(view, 'light');
   assert.doesNotThrow(() => mountThemeToggle(null));
 });

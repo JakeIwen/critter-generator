@@ -50,8 +50,9 @@ available and otherwise the account's returned default. No global Codex configur
 
 ## Use
 
-The interface starts dark regardless of system appearance. The sun/moon button in the top bar
-switches themes and remembers the choice when browser storage is available.
+The interface starts dark regardless of system appearance. The Light/Dark switch in the top bar
+remembers the choice when browser storage is available. Use the Left/Right arrow keys within the
+switch; on phones it shows sun/moon icons with the same accessible labels.
 
 1. Describe the lifeform or start from a preset. A nonempty description is followed directly; leave it
    blank for speculative invention. Presets fill the description and personality sliders.
