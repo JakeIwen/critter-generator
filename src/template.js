@@ -17,7 +17,7 @@ function animalChoices() {
 export function renderStudio(root) {
   root.innerHTML = `
   <header class="topbar">
-    <a href="#" class="brand" aria-label="Critter Generator home"><span class="brand-mark">${icon('leaf',25)}</span><span>CRITTER<span class="brand-bottom">GENERATOR</span></span></a>
+    <a href="#" class="brand" aria-label="Critter Generator home"><span class="brand-mark">${icon('fish',28)}</span><span>CRITTER<span class="brand-bottom">GENERATOR</span></span></a>
     <nav aria-label="Main navigation"><button class="nav active" data-page="lab">The laboratory</button><button class="nav" data-page="collection">Collection <span id="count">0</span></button><button class="nav" data-page="settings" id="settings-nav" hidden>Settings</button></nav>
     <div class="topbar-tools"><button id="logout" class="logout" type="button" hidden>Log out</button><button id="connection" class="connection" title="Check the Codex connection"><i></i><span>Connecting to Codex</span>${icon('reset',14)}</button><button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to light theme" title="Switch to light theme">${icon('sun',16)}</button></div>
   </header>

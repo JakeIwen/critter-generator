@@ -6,7 +6,8 @@ const iconPaths = {
   cube: '<path d="m12 3 9 5v9l-9 5-9-5V8l9-5Zm0 10 9-5M12 13 3 8m9 5v9"/>',
   sparkle: '<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/>',
   reset: '<path d="M3 11a9 9 0 1 1 2 7M3 4v7h7"/>',
-  leaf: '<path d="M20 3C7 1 1 9 6 17s17 0 14-14ZM5 20 16 9"/>',
+  // Brand mark: a three-eyed fish, the lab's mascot for species that never existed.
+  fish: '<path d="M5 12c2.5-4 5.5-6 9-6 3 0 5.5 1.5 7.5 4L23 12l-1.5 2c-2 2.5-4.5 4-7.5 4-3.5 0-6.5-2-9-6Z"/><path d="M5 12 2 8.5v7L5 12Zm5-5.4L8.5 3.2l4.6 2.9"/><circle cx="15.8" cy="12.9" r="1.5"/><circle cx="19.4" cy="12.9" r="1.5"/><circle cx="17.6" cy="9.6" r="1.5"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   book: '<path d="M12 5C8 2 4 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Zm0 0v15"/>',
 };
