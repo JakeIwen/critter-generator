@@ -80,7 +80,9 @@ switches themes and remembers the choice when browser storage is available.
    geometry in the 3D tab. A successful new portrait or edit marks existing CAD **Out of date**; its
    downloads remain available until you request another sculpture. A failed image update leaves the
    previous portrait and CAD freshness intact.
-8. Open **Collection** to revisit saved animals. The owner also sees **Delete** on each card: a second
+8. Open **Collection** (`/collection`) to revisit saved animals. A card opens its reloadable
+   `/specimens/<id>` permalink; `/` opens the most recent specimen. Navigation supports browser
+   Back/Forward and opening links in new tabs. The owner can open `/settings`. The owner also sees **Delete** on each card: a second
    click within five seconds archives the specimen (its folder moves to `<data>/archive/` and its row
    is removed; jobs and traces stay). The bundled example and a specimen with a running job cannot be
    archived. On phones the field notes follow the portrait directly, with the portrait/CAD cards after
@@ -200,8 +202,8 @@ Requests for the public host need a session cookie, which `/auth` issues in one 
 
 Sessions last 7 days and are signed with a key kept in the data directory (`session-secret`).
 `/api/status` reports the current `session` (`owner`, `email`, `passcode` or null) and the top bar
-shows **Log out** on the public host, which clears the app cookie and returns to `/auth`. **Retry**
-on the connection pill reconnects Codex and, when selected, Claude. The index page is served with
+shows **Log out** on the public host, a link to `/logout` that clears the app cookie and redirects to `/auth` (or `/` locally). **Retry**
+on the connection pill reconnects Codex and, when selected, Claude. Known app page URLs and `/index.html` are served with
 `Cache-Control: no-cache` so a deploy is picked up on the next load; hashed assets are immutable.
 Access must bypass the rest of the host; otherwise the passcode can never be reached. Localhost
 requests work as before. Everyone signed in shares one collection and the host's Codex login.
@@ -333,8 +335,8 @@ stage durations and retry counts. Missing quality scores remain unknown. See
 SQLite, geometry and authentication adapters in `server/`; schemas and prompt
 rules shared with the browser remain in `shared/`. The external check, HTTP
 verification and stop commands are listed in the Contracts table in `AGENTS.md`.
-- `src/main.js`: frontend bootstrap; `src/studio.js` owns the laboratory, collection, specimen,
-  and generation-job interactions; `src/viewer.js` owns the Three.js preview.
+- `src/main.js`: frontend bootstrap; `src/studio.js` wires laboratory, collection, specimen,
+  and generation-job features; `src/router.js` owns History-API navigation using `shared/page-routes.mjs`; `src/viewer.js` owns the Three.js preview.
 
 The app follows the [official Codex app-server protocol](https://developers.openai.com/codex/app-server/),
 uses [Manifold](https://manifoldcad.org/docs/jsuser/classes/Manifold.html) for solid geometry, and

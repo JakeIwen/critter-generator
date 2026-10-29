@@ -31,10 +31,6 @@ export function mountConnection(byId, jobs, toast, setOwner = () => {}) {
     }
   }
   byId('connection').onclick = () => check(true);
-  byId('logout').onclick = async () => {
-    try { await api('/auth/logout', { method: 'POST', body: '{}' }); location.assign('/auth'); }
-    catch (error) { toast(error.message); }
-  };
   return {
     check,
     resumeSavedJob() { jobs.resume(sessionStorage.getItem('critter-job')); },

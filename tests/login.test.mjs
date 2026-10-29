@@ -164,9 +164,9 @@ test('logout expires the app cookie and sessionMethod rejects missing and expire
   const ok = await s.enter('open sesame');
   const req = { headers: { cookie: session(ok) } };
   assert.equal(s.login.sessionMethod(req), 'passcode');
-  const response = await s.request('/auth/logout', { method: 'POST', headers: req.headers });
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true });
+  const response = await s.request('/logout', { headers: req.headers });
+  assert.equal(response.status, 303);
+  assert.equal(response.headers.get('location'), '/auth');
   assert.equal(response.headers.get('set-cookie'), `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`);
   assert.equal(s.login.sessionMethod({ headers: { cookie: session(response) } }), null);
   s.advance(7 * 24 * 3600_000);

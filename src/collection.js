@@ -1,15 +1,13 @@
+import { formatPagePath } from '../shared/page-routes.mjs';
 import { specimenFile } from './api.js';
 import { icon } from './icons.js';
 import { escape, usedSliders, hasPrintModel } from './specimen-format.js';
 
 const CONFIRM_DELETE_MS = 5000;
 
-export function renderCollection(byId, specimens, onSelect, owner = false, onDelete) {
+export function renderCollection(byId, specimens, owner = false, onDelete) {
   const grid = byId('collection-grid');
   grid.innerHTML = specimens.map(specimen => collectionCard(specimen, owner)).join('');
-  grid.querySelectorAll('[data-specimen]').forEach(button => {
-    button.onclick = () => onSelect(specimens.find(specimen => specimen.id === button.dataset.specimen));
-  });
   grid.querySelectorAll('[data-delete]').forEach(button => {
     const specimen = specimens.find(specimen => specimen.id === button.dataset.delete);
     mountDelete(button, specimen, onDelete);
@@ -25,7 +23,7 @@ function collectionCard(specimen, owner) {
       <span>${specimen.demo ? 'EXAMPLE' : new Date(specimen.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
     </div>
     <div class="collection-details"><p class="latin">${escape(specimen.latinName)}</p>
-      <h3><button class="collection-open" type="button" data-specimen="${id}">${name}</button></h3>
+      <h3><a class="collection-open" href="${escape(formatPagePath({ page: 'lab', specimenId: specimen.id }))}" data-specimen="${id}">${name}</a></h3>
       <footer class="collection-footer"><p>${usedSliders(specimen.settings).map(({ id, short }) => `${short} ${specimen.settings[id]}`).join(' <i>·</i> ')} <span>${icon('arrow')}</span></p>
         ${owner && !specimen.demo ? `<button class="collection-delete" type="button" data-delete="${id}" aria-label="Delete ${name}">Delete</button>` : ''}
       </footer>

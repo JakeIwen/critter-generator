@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { PAGE_PATHS, isAppPagePath } from '../shared/page-routes.mjs';
 import { example } from '../shared/specimen.mjs';
 import { Codex, safeError } from './codex.mjs';
 import { Claude } from './claude.mjs';
@@ -13,7 +14,7 @@ import { GenerationJobs } from './generation-jobs.mjs';
 import { createSpecimenRoutes } from './specimen-routes.mjs';
 import { Store } from './store.mjs';
 import { createAccessVerifier } from './access.mjs';
-import { createLogin } from './login.mjs';
+import { createLogin, logout } from './login.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const distRoot = process.env.CRITTER_DIST_DIR || path.join(root, 'dist');
@@ -57,6 +58,7 @@ app.use((req, res, next) => {
   next();
 });
 if (login) app.use((req, res, next) => isPublicHost(req) ? login.router(req, res, next) : next());
+app.get(PAGE_PATHS.logout, (_req, res) => logout(res, PAGE_PATHS.lab));
 app.use(express.json({ limit: '64kb' }));
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
@@ -100,7 +102,10 @@ app.use(express.static(distRoot, { setHeaders(res, file) {
     : file.startsWith(path.resolve(distRoot, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : null;
   if (policy) res.setHeader('Cache-Control', `${res.getHeader('Cache-Control')}, ${policy}`);
 } }));
-app.get('/', (_req, res) => res.set('Cache-Control', 'no-transform, no-cache').sendFile(path.join(distRoot, 'index.html')));
+app.use((req, res, next) => {
+  if (!['GET', 'HEAD'].includes(req.method) || !isAppPagePath(req.path)) return next();
+  res.set('Cache-Control', 'no-transform, no-cache').sendFile('index.html', { root: distRoot });
+});
 app.use((err, _req, res, _next) => res.status(err.status || 500).json({ error: err.status === 400 ? 'Invalid JSON request.' : safeError(err) }));
 const server = app.listen(port, '127.0.0.1');
 server.once('listening', () => {

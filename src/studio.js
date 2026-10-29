@@ -4,6 +4,7 @@ import { renderCollection } from './collection.js';
 import { mountConnection } from './connection.js';
 import { mountGenerationForm } from './generation-form.js';
 import { createJobController } from './generation-jobs.js';
+import { mountRouter } from './router.js';
 import { mountSettingsPage } from './settings-page.js';
 import { createSpecimenView } from './specimen-view.js';
 import { renderStudio } from './template.js';
@@ -12,21 +13,13 @@ export function mountStudio() {
   renderStudio(document.querySelector('#app'));
   const byId = id => document.getElementById(id);
   let specimens = [], owner = false;
-  const showCollection = () => renderCollection(byId, specimens, selectFromCollection, owner, archiveSpecimen);
-  const setOwner = value => { if (owner !== value) { owner = value; showCollection(); } };
+  const showCollection = () => renderCollection(byId, specimens, owner, archiveSpecimen);
+  const setOwner = value => { if (owner !== value) { owner = value; showCollection(); } router.setOwner(value); };
   const toast = message => {
     byId('toast').textContent = message; byId('toast').classList.remove('hidden');
     clearTimeout(toast.timer); toast.timer = setTimeout(() => byId('toast').classList.add('hidden'), 9000);
   };
   const settingsPage = mountSettingsPage(byId, { onError: toast });
-  const setPage = page => {
-    byId('laboratory').classList.toggle('hidden', page !== 'lab');
-    byId('collection').classList.toggle('hidden', page !== 'collection');
-    byId('settings').classList.toggle('hidden', page !== 'settings');
-    document.querySelectorAll('[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
-    if (page === 'collection') showCollection();
-    if (page === 'settings') void settingsPage.show();
-  };
   const form = mountGenerationForm(byId, settings => jobs.launch('/api/generate', settings), toast);
   const specimenView = createSpecimenView(byId, {
     onPortrait: (specimen, body = {}) => jobs.launch(`/api/specimens/${specimen.id}/portrait`, body, JOB_KINDS.PORTRAIT),
@@ -34,12 +27,11 @@ export function mountStudio() {
     onReuse: form.applySettings,
     onError: toast,
   });
+  const router = mountRouter(byId, { getSpecimens: () => specimens, specimenView, showCollection, settingsPage, toast });
   async function loadSpecimens(selectId) {
     specimens = await api('/api/specimens');
     byId('count').textContent = specimens.filter(specimen => !specimen.demo).length;
-    const specimen = specimens.find(item => item.id === selectId) || specimens.find(item => item.id === specimenView.selectedId) || specimens[0];
-    if (specimen) await specimenView.select(specimen, specimens);
-    showCollection();
+    showCollection(); await router.refresh(selectId);
   }
   async function archiveSpecimen(specimen) {
     try {
@@ -47,12 +39,9 @@ export function mountStudio() {
       await loadSpecimens(); toast(`Archived ${specimen.englishName}`);
     } catch (error) { toast(error.message); }
   }
-  function selectFromCollection(specimen) {
-    setPage('lab'); void specimenView.selectPortrait(specimen, specimens);
-  }
   const jobs = createJobController(byId, {
     onBusy(value) { form.setBusy(value); specimenView.setBusy(value); },
-    onLaunchPending(job, title) { setPage('lab'); specimenView.showPending(job, title); },
+    onLaunchPending(job, title) { router.navigate({ page: 'lab' }); specimenView.showPending(job, title); },
     onPending(job, title) { specimenView.showPending(job, title); },
     onSpecimen(id) {
       if (id === specimenView.selectedId) return undefined;
@@ -64,8 +53,6 @@ export function mountStudio() {
     },
     onError: toast,
   });
-  document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => setPage(button.dataset.page));
-  document.querySelector('.brand').onclick = event => { event.preventDefault(); setPage('lab'); };
   const connection = mountConnection(byId, jobs, toast, setOwner);
   void initialize(loadSpecimens, connection, toast);
 }

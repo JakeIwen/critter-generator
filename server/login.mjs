@@ -1,4 +1,5 @@
 import express from 'express';
+import { PAGE_PATHS } from '../shared/page-routes.mjs';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -70,12 +71,14 @@ export function createLogin({ publicOrigin, passcode, verifyAccess, secretFile, 
     startSession(res, method);
   });
 
-  router.post('/auth/logout', (_req, res) => {
-    res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`);
-    res.json({ ok: true });
-  });
+  router.get(PAGE_PATHS.logout, (_req, res) => logout(res, '/auth'));
 
   return { signedIn, sessionMethod, isOwner, challenge, router };
+}
+
+export function logout(res, target) {
+  res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`);
+  res.redirect(303, target);
 }
 
 function page(res, status, { passcode, error }) {

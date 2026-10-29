@@ -21,11 +21,13 @@ async function server(t, { publicHost = false, provider = 'codex' } = {}) {
   const bin = path.join(scratch, 'bin'); await mkdir(bin);
   const fixture = new URL('./fixtures/design-codex.mjs', import.meta.url).href;
   await writeFile(path.join(bin, 'codex'), `#!${process.execPath}\nimport ${JSON.stringify(fixture)};\n`, { mode: 0o700 });
+  await mkdir(path.join(scratch, '.dist'));
+  await writeFile(path.join(scratch, '.dist/index.html'), '<!doctype html><title>Isolated app</title>');
   const store = new Store(path.join(scratch, 'data'));
   store.setMetadata('generation-model', { provider, model: 'fixture', effort: null }); store.db.close();
   const child = spawn(process.execPath, ['server/index.mjs'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, PATH: bin, PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data'),
-      CRITTER_DIST_DIR: path.join(scratch, 'dist'), CRITTER_CLAUDE_EXECUTABLE: path.join(bin, 'claude-missing'),
+      CRITTER_DIST_DIR: path.join(scratch, '.dist'), CRITTER_CLAUDE_EXECUTABLE: path.join(bin, 'claude-missing'),
       PUBLIC_ORIGIN: publicHost ? publicOrigin : '', CRITTER_PASSCODE: 'fixture passcode',
       ACCESS_TEAM_DOMAIN: 'fixture.cloudflareaccess.com', ACCESS_AUD: 'fixture-audience',
       CRITTER_OWNER_EMAIL: 'owner@example.test', CRITTER_TEST_LOG: path.join(scratch, 'requests.jsonl') } });
@@ -66,7 +68,6 @@ test('connect retries Codex and returns the usual session-aware status on localh
   assert.equal(status.connected, true); assert.equal(status.connection.codex.connected, true);
   assert.equal(status.owner, true); assert.equal(status.session, null);
   assert.deepEqual(status.generation, { provider: 'codex', model: 'fixture', effort: null });
-  assert.equal((await request('/auth/logout', { method: 'POST', headers: appHeaders })).status, 404);
 });
 
 test('connect also retries selected Claude and reports its failure even when Codex is connected', async t => {
@@ -80,7 +81,7 @@ test('connect also retries selected Claude and reports its failure even when Cod
   assert.equal(status.connection.claude.reason, error);
 });
 
-test('public status identifies passcode sessions and logout requires the app request header', async t => {
+test('public status identifies passcode sessions and the logout link clears them', async t => {
   const { request } = await server(t, { publicHost: true });
   const entered = await request('/auth/passcode', { method: 'POST', headers: { Origin: publicOrigin },
     body: new URLSearchParams({ passcode: 'fixture passcode' }) });
@@ -88,10 +89,36 @@ test('public status identifies passcode sessions and logout requires the app req
   const cookie = entered.headers.get('set-cookie').split(';')[0];
   const status = await (await request('/api/status', { headers: { cookie } })).json();
   assert.equal(status.session, 'passcode'); assert.equal(status.owner, false);
-  const blocked = await request('/auth/logout', { method: 'POST', headers: { cookie } });
-  assert.equal(blocked.status, 403); assert.deepEqual(await blocked.json(), { error: 'Missing app request header.' });
-  const response = await request('/auth/logout', { method: 'POST', headers: { cookie, ...appHeaders } });
-  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ok: true });
+  const response = await request('/logout', { headers: { cookie } });
+  assert.equal(response.status, 303); assert.equal(response.headers.get('location'), '/auth');
   assert.equal(response.headers.get('set-cookie'), `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`);
   assert.equal((await request('/api/status')).status, 401);
+});
+
+
+test('local logout redirects home without a public session', async t => {
+  const { request } = await server(t);
+  const response = await request('/logout');
+  assert.equal(response.status, 303); assert.equal(response.headers.get('location'), '/');
+  assert.equal(response.headers.get('set-cookie'), `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`);
+});
+
+test('signed-out public logout challenges with the sign-in page', async t => {
+  const { request } = await server(t, { publicHost: true });
+  const response = await request('/logout');
+  assert.equal(response.status, 302); assert.equal(response.headers.get('location'), '/auth');
+});
+
+test('known app pages serve the same uncached index for GET and HEAD; unknown paths stay 404', async t => {
+  const { request } = await server(t);
+  for (const route of ['/', '/collection', '/settings', '/specimens/example-lantern', '/specimens/a%2Fb%20c']) {
+    for (const method of ['GET', 'HEAD']) {
+      const response = await request(route, { method });
+      assert.equal(response.status, 200, `${method} ${route}`);
+      assert.equal(response.headers.get('cache-control'), 'no-transform, no-cache');
+      assert.equal(await response.text(), method === 'GET' ? '<!doctype html><title>Isolated app</title>' : '');
+    }
+  }
+  assert.equal((await request('/unknown-page')).status, 404);
+  assert.equal((await request('/api/unknown')).status, 404);
 });

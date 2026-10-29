@@ -54,7 +54,7 @@ for (const settings of [{ height: 501 }, { height: 500, baseplate: 'false' },
 assert.equal((await fetch(origin+'/api/status',{headers:{Origin:'https://unrelated.example'}})).status,403);
 assert.equal((await fetch(origin+'/api/specimens/example-lantern/files/server.json')).status,404);
 assert.equal((await fetch(origin+'/api/shutdown',{method:'POST',headers:{'X-Critter-Request':'1'}})).status,403);
-for (const route of ['/', '/index.html']) {
+for (const route of ['/', '/index.html', '/collection', '/settings', '/specimens/example-lantern']) {
   const response = await fetch(origin + route);
   assert.match(response.headers.get('cache-control'), /no-transform/);
   assert.match(response.headers.get('cache-control'), /no-cache/);
@@ -65,6 +65,9 @@ for (const route of ['/', '/index.html']) {
   assert.equal(builtAsset.status, 200);
   assert.match(builtAsset.headers.get('cache-control'), /no-transform, public, max-age=31536000, immutable/);
 }
+assert.equal((await fetch(origin + '/unknown-page')).status, 404);
+const logout = await fetch(origin + '/logout', { redirect: 'manual' });
+assert.equal(logout.status, 303); assert.equal(logout.headers.get('location'), '/');
 const remove = id => fetch(`${origin}/api/specimens/${id}`, { method: 'DELETE', headers: { 'X-Critter-Request': '1' } });
 assert.equal((await remove('unknown-specimen')).status, 404);
 assert.equal((await remove('example-lantern')).status, 409);
@@ -79,4 +82,4 @@ const dataRoot = process.env.CRITTER_DATA_DIR;
 assert(dataRoot, 'Archive verification requires the isolated data root.');
 assert(!existsSync(path.join(dataRoot, 'specimens/verification-model')));
 assert(readdirSync(path.join(dataRoot, 'archive')).some(name => name === 'verification-model' || name.startsWith('verification-model-')));
-console.log(`HTTP verification passed: ${specimens.length} saved specimens, binary STL/CAD/image downloads, input validation, owner settings/stats, index/asset caching, specimen archival and local request boundaries.`);
+console.log(`HTTP verification passed: ${specimens.length} saved specimens, binary STL/CAD/image downloads, input validation, owner settings/stats, SPA paths/index/asset caching, logout redirects, specimen archival and local request boundaries.`);
