@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.mjs';
@@ -136,4 +136,56 @@ test('on-demand CAD versions preserve earlier and legacy files while following t
     await assert.rejects(store.model('image', { ...example.anatomy, bodyHeight: -1 }, 200, true, { sourcePortraitVersion: 2 }));
     assert.deepEqual(readFileSync(store.modelFile(specimen, 'model.stl')), original);
   } finally { store.db.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('archive moves the complete specimen folder, retains jobs and traces, and prevents startup re-import', t => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'critter-archive-'));
+  let store = new Store(root);
+  t.after(() => { store.db.close(); rmSync(root, { recursive: true, force: true }); });
+  const specimen = { ...example, id: 'archived-one', createdAt: '2026-09-01T00:00:00Z' };
+  store.save('specimens', specimen.id, specimen);
+  store.portrait(specimen.id, Buffer.from('preserved portrait'));
+  store.save('jobs', 'retained-job', { id: 'retained-job', specimenId: specimen.id, status: 'failed', createdAt: specimen.createdAt });
+  writeFileSync(store.file('jobs', 'retained-job', 'trace.json'), 'preserved trace');
+  assert.equal(store.archiveSpecimen(specimen.id), specimen.id);
+  assert.equal(store.get('specimens', specimen.id), null);
+  assert(!existsSync(path.join(root, 'specimens', specimen.id)));
+  assert.equal(readFileSync(path.join(root, 'archive', specimen.id, 'portrait.png'), 'utf8'), 'preserved portrait');
+  assert.deepEqual(JSON.parse(readFileSync(path.join(root, 'archive', specimen.id, 'record.json'), 'utf8')), specimen);
+  store.db.close(); store = new Store(root);
+  assert.deepEqual(store.list('specimens'), []);
+  assert.equal(store.get('specimens', specimen.id), null);
+  assert.equal(store.get('jobs', 'retained-job').specimenId, specimen.id);
+  assert.equal(readFileSync(store.file('jobs', 'retained-job', 'trace.json'), 'utf8'), 'preserved trace');
+  assert.throws(() => store.archiveSpecimen('unknown'), /Specimen not found/);
+  assert.deepEqual(readdirSync(path.join(root, 'archive')), [specimen.id]);
+});
+
+test('archive preserves existing destinations with an ISO timestamp suffix', t => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'critter-archive-collision-'));
+  const store = new Store(root);
+  t.after(() => { store.db.close(); rmSync(root, { recursive: true, force: true }); });
+  const specimen = { ...example, id: 'again', createdAt: '2026-09-01T00:00:00Z' };
+  store.save('specimens', specimen.id, specimen); store.archiveSpecimen(specimen.id);
+  store.save('specimens', specimen.id, { ...specimen, englishName: 'Second specimen' });
+  store.archiveSpecimen(specimen.id);
+  const destinations = readdirSync(path.join(root, 'archive'));
+  assert.equal(destinations.length, 2);
+  const suffixed = destinations.find(name => name !== specimen.id);
+  assert.match(suffixed, /^again-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  assert.equal(JSON.parse(readFileSync(path.join(root, 'archive', 'again', 'record.json'))).englishName, example.englishName);
+  assert.equal(JSON.parse(readFileSync(path.join(root, 'archive', suffixed, 'record.json'))).englishName, 'Second specimen');
+});
+
+test('archive restores the folder if deleting its database row fails', t => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'critter-archive-failure-'));
+  const store = new Store(root);
+  t.after(() => { store.db.close(); rmSync(root, { recursive: true, force: true }); });
+  const specimen = { ...example, id: 'kept', createdAt: '2026-09-01T00:00:00Z' };
+  store.save('specimens', specimen.id, specimen);
+  store.db.exec("CREATE TRIGGER reject_delete BEFORE DELETE ON specimens BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;");
+  assert.throws(() => store.archiveSpecimen(specimen.id), /fixture failure/);
+  assert.deepEqual(store.get('specimens', specimen.id), specimen);
+  assert(existsSync(store.file('specimens', specimen.id, 'record.json')));
+  assert.deepEqual(readdirSync(path.join(root, 'archive')), []);
 });

@@ -70,7 +70,7 @@ async function seedDownloadFixtures() {
   const store = new Store(path.join(scratch, 'data'));
   try {
     const id = 'verification-model';
-    const specimen = { ...example, id, demo: true, image: true, print: null,
+    const specimen = { ...example, id, demo: false, image: true, print: null,
       settings: { prompt: '', absurdity: 65, deviancy: 35, lethality: 20, height: 100 },
       createdAt: '2025-01-01T00:00:00.000Z' };
     store.save('specimens', id, specimen);

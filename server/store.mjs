@@ -56,6 +56,19 @@ export class Store {
     if (!['specimens', 'jobs'].includes(kind)) throw new Error('Invalid record type.');
     return this.db.prepare(`SELECT data FROM ${kind} ORDER BY created_at DESC`).all().map(row => JSON.parse(row.data));
   }
+  archiveSpecimen(id) {
+    if (!this.get('specimens', id)) throw new Error('Specimen not found.');
+    const source = path.dirname(this.file('specimens', id, 'record.json'));
+    const archive = path.join(this.root, 'archive');
+    mkdirSync(archive, { recursive: true });
+    let destination = path.join(archive, id), timestamp = Date.now();
+    while (existsSync(destination)) destination = path.join(archive, `${id}-${new Date(timestamp++).toISOString()}`);
+    // Move the record too: startup imports any record.json left in specimens/.
+    renameSync(source, destination);
+    try { this.db.prepare('DELETE FROM specimens WHERE id=?').run(id); }
+    catch (error) { renameSync(destination, source); throw error; }
+    return id;
+  }
   metadata(key, fallback = null) {
     const row = this.db.prepare('SELECT value FROM app_metadata WHERE key=?').get(key);
     return row ? JSON.parse(row.value) : structuredClone(fallback);

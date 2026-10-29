@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { existsSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 const origin = `http://127.0.0.1:${process.env.PORT || 4329}`;
 const status = await (await fetch(origin + '/api/status')).json();
 assert.equal(status.owner, true);
+assert.equal(status.session, null);
 assert.deepEqual(status.generation, { provider: 'codex', model: 'gpt-6-astra', effort: 'max' });
 assert.equal(typeof status.connection.codex.connected, 'boolean');
 assert.equal(typeof status.connection.claude.connected, 'boolean');
@@ -51,4 +54,29 @@ for (const settings of [{ height: 501 }, { height: 500, baseplate: 'false' },
 assert.equal((await fetch(origin+'/api/status',{headers:{Origin:'https://unrelated.example'}})).status,403);
 assert.equal((await fetch(origin+'/api/specimens/example-lantern/files/server.json')).status,404);
 assert.equal((await fetch(origin+'/api/shutdown',{method:'POST',headers:{'X-Critter-Request':'1'}})).status,403);
-console.log(`HTTP verification passed: ${specimens.length} saved specimens, binary STL/CAD/image downloads, input validation, owner settings/stats and local request boundaries.`);
+for (const route of ['/', '/index.html']) {
+  const response = await fetch(origin + route);
+  assert.match(response.headers.get('cache-control'), /no-transform/);
+  assert.match(response.headers.get('cache-control'), /no-cache/);
+  const html = await response.text();
+  const asset = html.match(/(?:src|href)="(\/assets\/[^"]+)"/)?.[1];
+  assert(asset, 'The index references a hashed build asset.');
+  const builtAsset = await fetch(origin + asset);
+  assert.equal(builtAsset.status, 200);
+  assert.match(builtAsset.headers.get('cache-control'), /no-transform, public, max-age=31536000, immutable/);
+}
+const remove = id => fetch(`${origin}/api/specimens/${id}`, { method: 'DELETE', headers: { 'X-Critter-Request': '1' } });
+assert.equal((await remove('unknown-specimen')).status, 404);
+assert.equal((await remove('example-lantern')).status, 409);
+// The download fixture has served its purpose; archive it only after checking its files.
+const archived = await remove('verification-model');
+assert.equal(archived.status, 200);
+assert.deepEqual(await archived.json(), { archived: 'verification-model' });
+const remaining = await (await fetch(origin + '/api/specimens')).json();
+assert.equal(remaining.length, specimens.length - 1);
+assert(!remaining.some(specimen => specimen.id === 'verification-model'));
+const dataRoot = process.env.CRITTER_DATA_DIR;
+assert(dataRoot, 'Archive verification requires the isolated data root.');
+assert(!existsSync(path.join(dataRoot, 'specimens/verification-model')));
+assert(readdirSync(path.join(dataRoot, 'archive')).some(name => name === 'verification-model' || name.startsWith('verification-model-')));
+console.log(`HTTP verification passed: ${specimens.length} saved specimens, binary STL/CAD/image downloads, input validation, owner settings/stats, index/asset caching, specimen archival and local request boundaries.`);

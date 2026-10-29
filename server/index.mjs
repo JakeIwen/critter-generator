@@ -52,7 +52,7 @@ app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
   if (req.headers.origin && !origins.has(req.headers.origin)) return res.status(403).json({ error: 'Cross-origin access denied.' });
   // The sign-in form is a plain HTML post; login.mjs checks its Origin instead.
-  const isLoginForm = isPublic && isLoginPath(req);
+  const isLoginForm = isPublic && req.method === 'POST' && req.path === '/auth/passcode';
   if (!['GET', 'HEAD'].includes(req.method) && req.headers['x-critter-request'] !== '1' && !isLoginForm) return res.status(403).json({ error: 'Missing app request header.' });
   next();
 });
@@ -76,6 +76,7 @@ if (!exampleRecord.image && existsSync(examplePortrait)) {
 }
 
 const connectionStatus = req => ({ ...codex.state, owner: isOwner(req),
+  session: isPublicHost(req) ? login.sessionMethod(req) : null,
   generation: (({ provider, model, effort }) => ({ provider, model, effort }))(store.generationModel()),
   connection: Object.fromEntries(Object.entries(providers).map(([id, provider]) => [id, provider.state])),
   activeJob: jobs.current?.job.id || null, generationTiming: store.generationTiming() });
@@ -85,13 +86,21 @@ app.post('/api/shutdown', (req, res) => {
   res.json({ stopped: true }); setTimeout(shutdown, 50);
 });
 app.post('/api/connect', async (req, res) => {
-  try { await codex.connect(); res.json(connectionStatus(req)); } catch (e) { res.status(503).json({ error: safeError(e) }); }
+  try {
+    await codex.connect();
+    if (store.generationModel().provider === PROVIDERS.CLAUDE) await claude.connect();
+    res.json(connectionStatus(req));
+  } catch (e) { res.status(503).json({ error: safeError(e) }); }
 });
 app.use(createSettingsRoutes({ store, catalog, isOwner }));
-app.use(createSpecimenRoutes({ store, jobs }));
+app.use(createSpecimenRoutes({ store, jobs, isOwner }));
 
-app.use(express.static(distRoot));
-app.get('/', (_req, res) => res.sendFile(path.join(distRoot, 'index.html')));
+app.use(express.static(distRoot, { setHeaders(res, file) {
+  const policy = path.basename(file) === 'index.html' ? 'no-cache'
+    : file.startsWith(path.resolve(distRoot, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : null;
+  if (policy) res.setHeader('Cache-Control', `${res.getHeader('Cache-Control')}, ${policy}`);
+} }));
+app.get('/', (_req, res) => res.set('Cache-Control', 'no-transform, no-cache').sendFile(path.join(distRoot, 'index.html')));
 app.use((err, _req, res, _next) => res.status(err.status || 500).json({ error: err.status === 400 ? 'Invalid JSON request.' : safeError(err) }));
 const server = app.listen(port, '127.0.0.1');
 server.once('listening', () => {

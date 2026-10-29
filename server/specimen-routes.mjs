@@ -29,13 +29,22 @@ function attachmentName(specimen, suffix) {
   return `${slug}.${suffix}`;
 }
 
-export function createSpecimenRoutes({ store, jobs }) {
+export function createSpecimenRoutes({ store, jobs, isOwner = () => false }) {
   const router = express.Router();
   const busy = res => {
     if (!jobs.current) return false;
     res.status(409).json({ error: 'A generation is already running.', jobId: jobs.current.job.id }); return true;
   };
   router.get('/api/specimens', (_req, res) => res.json(store.list('specimens')));
+  router.delete('/api/specimens/:id', (req, res) => {
+    if (!isOwner(req)) return res.status(403).json({ error: 'Owner access only.' });
+    const { id } = req.params, specimen = store.get('specimens', id);
+    if (!specimen) return res.status(404).json({ error: 'Specimen not found.' });
+    if (specimen.demo) return res.status(409).json({ error: 'The bundled example cannot be deleted.' });
+    if (jobs.current?.job.specimenId === id) return res.status(409).json({ error: 'A generation is running for this specimen.' });
+    store.archiveSpecimen(id);
+    res.json({ archived: id });
+  });
   router.get('/api/jobs/:id', (req, res) => {
     const job = store.get('jobs', req.params.id);
     job ? res.json(job) : res.status(404).json({ error: 'Generation not found.' });

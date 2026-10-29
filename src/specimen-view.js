@@ -1,7 +1,6 @@
 import { api, specimenFile } from './api.js';
 import { icon } from './icons.js';
 import { escape, usedSliders, hasPrintModel } from './specimen-format.js';
-import { mountViewer } from './viewer.js';
 import { cadIsStale } from '../shared/specimen-assets.mjs';
 import { renderSpecimenActions, setSpecimenActionsBusy, renderImageReview } from './specimen-actions.js';
 
@@ -96,7 +95,10 @@ export function createSpecimenView(byId, { onPortrait, onCad, onReuse, onError }
     byId('visual').innerHTML = '<div class="loading-visual"><span class="spinner"></span><p>Loading the print sculpture…</p></div>';
     byId('view-caption').textContent = cadIsStale(specimen) ? 'OUT-OF-DATE MODEL · DRAG TO ROTATE · SCROLL TO ZOOM' : 'PRINT GEOMETRY · DRAG TO ROTATE · SCROLL TO ZOOM';
     try {
-      const mesh = await api(specimenFile(specimen,'mesh.json'));
+      const [{ mountViewer }, mesh] = await Promise.all([
+        import('./viewer.js'),
+        api(specimenFile(specimen,'mesh.json')),
+      ]);
       if (token !== viewToken) return;
       byId('visual').innerHTML = '<div id="model-viewer"></div>';
       viewer = mountViewer(byId('model-viewer'), mesh, specimen.print.height);

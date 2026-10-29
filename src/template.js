@@ -10,7 +10,7 @@ function slider({ id, name, initial: value, low, high }) {
 
 function animalChoices() {
   return `<details class="inspiration-details"><summary title="Choose up to ${MAX_ANIMAL_INSPIRATIONS} animal groups to use together.">Animal inspiration <span class="optional-tag">OPTIONAL · MAX ${MAX_ANIMAL_INSPIRATIONS}</span></summary>
-    <div class="animal-chips"><button id="any-animal" class="animal-chip" type="button" aria-pressed="true">Any animal</button>${animalTypes.map(type => `<button class="animal-chip${type.fictional ? ' fictional-animal' : ''}" type="button" data-animal-type="${type.id}" aria-pressed="false" title="${escape(type.fictional ? `Fictional inspiration: ${type.traits}` : type.traits)}">${escape(type.label)}${type.fictional ? '<span aria-label="fictional">✦</span>' : ''}</button>`).join('')}</div>
+    <div class="animal-chips"><button id="any-animal" class="animal-chip" type="button" aria-pressed="true">Any animal</button>${animalTypes.map(type => `<button class="animal-chip" type="button" data-animal-type="${type.id}" aria-pressed="false" title="${escape(type.traits)}">${escape(type.label)}</button>`).join('')}</div>
   </details>`;
 }
 
@@ -19,7 +19,7 @@ export function renderStudio(root) {
   <header class="topbar">
     <a href="#" class="brand" aria-label="Critter Generator home"><span class="brand-mark">${icon('leaf',25)}</span><span>CRITTER<span class="brand-bottom">GENERATOR</span></span></a>
     <nav aria-label="Main navigation"><button class="nav active" data-page="lab">The laboratory</button><button class="nav" data-page="collection">Collection <span id="count">0</span></button><button class="nav" data-page="settings" id="settings-nav" hidden>Settings</button></nav>
-    <div class="topbar-tools"><button id="connection" class="connection" title="Check the Codex connection"><i></i><span>Connecting to Codex</span>${icon('reset',14)}</button><button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to light theme" title="Switch to light theme">${icon('sun',16)}</button></div>
+    <div class="topbar-tools"><button id="logout" class="logout" type="button" hidden>Log out</button><button id="connection" class="connection" title="Check the Codex connection"><i></i><span>Connecting to Codex</span>${icon('reset',14)}</button><button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to light theme" title="Switch to light theme">${icon('sun',16)}</button></div>
   </header>
   <main>
     <h1 class="page-title">Critter Generator</h1>

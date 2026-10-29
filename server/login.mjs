@@ -65,10 +65,17 @@ export function createLogin({ publicOrigin, passcode, verifyAccess, secretFile, 
       return page(res, 403, { passcode: Boolean(passcodeHash), error: 'Email sign-in did not go through. Try again.' });
     }
     const claimEmail = String(claims.email ?? '').trim().toLowerCase();
-    startSession(res, ownerAddress && claimEmail === ownerAddress ? 'owner' : 'email');
+    const method = ownerAddress && claimEmail === ownerAddress ? 'owner' : 'email';
+    console.log(`email sign-in: ${method} session`);
+    startSession(res, method);
   });
 
-  return { signedIn, isOwner, challenge, router };
+  router.post('/auth/logout', (_req, res) => {
+    res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`);
+    res.json({ ok: true });
+  });
+
+  return { signedIn, sessionMethod, isOwner, challenge, router };
 }
 
 function page(res, status, { passcode, error }) {

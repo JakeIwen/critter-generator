@@ -80,7 +80,11 @@ switches themes and remembers the choice when browser storage is available.
    geometry in the 3D tab. A successful new portrait or edit marks existing CAD **Out of date**; its
    downloads remain available until you request another sculpture. A failed image update leaves the
    previous portrait and CAD freshness intact.
-8. Open **Collection** to revisit saved animals. **New lifeform from settings** restores the input
+8. Open **Collection** to revisit saved animals. The owner also sees **Delete** on each card: a second
+   click within five seconds archives the specimen (its folder moves to `<data>/archive/` and its row
+   is removed; jobs and traces stay). The bundled example and a specimen with a running job cannot be
+   archived. On phones the field notes follow the portrait directly, with the portrait/CAD cards after
+   them, and the 3D viewer's library loads only when the 3D tab opens. **New lifeform from settings** restores the input
    controls for another discovery; it is a different action from editing an existing portrait.
    Download field notes and the generation trace to inspect the exact inputs and attempts.
 
@@ -187,6 +191,10 @@ Requests for the public host need a session cookie, which `/auth` issues in one 
   keys, plus issuer, audience, and expiry, before issuing the session.
 
 Sessions last 7 days and are signed with a key kept in the data directory (`session-secret`).
+`/api/status` reports the current `session` (`owner`, `email`, `passcode` or null) and the top bar
+shows **Log out** on the public host, which clears the app cookie and returns to `/auth`. **Retry**
+on the connection pill reconnects Codex and, when selected, Claude. The index page is served with
+`Cache-Control: no-cache` so a deploy is picked up on the next load; hashed assets are immutable.
 Access must bypass the rest of the host; otherwise the passcode can never be reached. Localhost
 requests work as before. Everyone signed in shares one collection and the host's Codex login.
 The lionfeather.dev deployment lives in the `lionfeather-edge` repository (`apps/critter/`).

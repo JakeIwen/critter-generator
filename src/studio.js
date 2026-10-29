@@ -11,7 +11,9 @@ import { renderStudio } from './template.js';
 export function mountStudio() {
   renderStudio(document.querySelector('#app'));
   const byId = id => document.getElementById(id);
-  let specimens = [];
+  let specimens = [], owner = false;
+  const showCollection = () => renderCollection(byId, specimens, selectFromCollection, owner, archiveSpecimen);
+  const setOwner = value => { if (owner !== value) { owner = value; showCollection(); } };
   const toast = message => {
     byId('toast').textContent = message; byId('toast').classList.remove('hidden');
     clearTimeout(toast.timer); toast.timer = setTimeout(() => byId('toast').classList.add('hidden'), 9000);
@@ -22,7 +24,7 @@ export function mountStudio() {
     byId('collection').classList.toggle('hidden', page !== 'collection');
     byId('settings').classList.toggle('hidden', page !== 'settings');
     document.querySelectorAll('[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
-    if (page === 'collection') renderCollection(byId, specimens, selectFromCollection);
+    if (page === 'collection') showCollection();
     if (page === 'settings') void settingsPage.show();
   };
   const form = mountGenerationForm(byId, settings => jobs.launch('/api/generate', settings), toast);
@@ -37,7 +39,13 @@ export function mountStudio() {
     byId('count').textContent = specimens.filter(specimen => !specimen.demo).length;
     const specimen = specimens.find(item => item.id === selectId) || specimens.find(item => item.id === specimenView.selectedId) || specimens[0];
     if (specimen) await specimenView.select(specimen, specimens);
-    renderCollection(byId, specimens, selectFromCollection);
+    showCollection();
+  }
+  async function archiveSpecimen(specimen) {
+    try {
+      await api(`/api/specimens/${encodeURIComponent(specimen.id)}`, { method: 'DELETE' });
+      await loadSpecimens(); toast(`Archived ${specimen.englishName}`);
+    } catch (error) { toast(error.message); }
   }
   function selectFromCollection(specimen) {
     setPage('lab'); void specimenView.selectPortrait(specimen, specimens);
@@ -58,7 +66,7 @@ export function mountStudio() {
   });
   document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => setPage(button.dataset.page));
   document.querySelector('.brand').onclick = event => { event.preventDefault(); setPage('lab'); };
-  const connection = mountConnection(byId, jobs, toast);
+  const connection = mountConnection(byId, jobs, toast, setOwner);
   void initialize(loadSpecimens, connection, toast);
 }
 

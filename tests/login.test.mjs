@@ -89,6 +89,7 @@ test('the owner email starts a signed-in owner session', async t => {
   const req = { headers: { cookie: session(ok) } };
   assert.equal(s.login.signedIn(req), true);
   assert.equal(s.login.isOwner(req), true);
+  assert.equal(s.login.sessionMethod(req), 'owner');
   assert.equal((await s.request('/', { headers: req.headers })).status, 200);
 });
 
@@ -99,6 +100,7 @@ test('another email starts an ordinary email session', async t => {
   const req = { headers: { cookie: session(ok) } };
   assert.equal(s.login.signedIn(req), true);
   assert.equal(s.login.isOwner(req), false);
+  assert.equal(s.login.sessionMethod(req), s.login.signedIn(req) ? session(ok).split('=')[1].split('.')[0] : null);
 });
 
 test('owner email matching ignores case and surrounding whitespace', async t => {
@@ -109,6 +111,7 @@ test('owner email matching ignores case and surrounding whitespace', async t => 
   const req = { headers: { cookie: session(ok) } };
   assert.equal(s.login.signedIn(req), true);
   assert.equal(s.login.isOwner(req), true);
+  assert.equal(s.login.sessionMethod(req), 'owner');
 });
 
 test('passcode sessions never grant owner access', async t => {
@@ -118,6 +121,7 @@ test('passcode sessions never grant owner access', async t => {
   const req = { headers: { cookie: session(ok) } };
   assert.equal(s.login.signedIn(req), true);
   assert.equal(s.login.isOwner(req), false);
+  assert.equal(s.login.sessionMethod(req), s.login.signedIn(req) ? session(ok).split('=')[1].split('.')[0] : null);
 });
 
 test('changing an email cookie method to owner invalidates the session', async t => {
@@ -127,6 +131,7 @@ test('changing an email cookie method to owner invalidates the session', async t
   const req = { headers: { cookie } };
   assert.equal(s.login.signedIn(req), false);
   assert.equal(s.login.isOwner(req), false);
+  assert.equal(s.login.sessionMethod(req), s.login.signedIn(req) ? session(ok).split('=')[1].split('.')[0] : null);
   assert.equal((await s.request('/', { headers: req.headers })).status, 302);
 });
 
@@ -137,6 +142,7 @@ test('without an owner email the matching email stays an ordinary session', asyn
   const req = { headers: { cookie: session(ok) } };
   assert.equal(s.login.signedIn(req), true);
   assert.equal(s.login.isOwner(req), false);
+  assert.equal(s.login.sessionMethod(req), s.login.signedIn(req) ? session(ok).split('=')[1].split('.')[0] : null);
 });
 
 test('owner sessions expire after seven days', async t => {
@@ -144,8 +150,25 @@ test('owner sessions expire after seven days', async t => {
   const ok = await s.request('/auth/email', { headers: { 'cf-access-jwt-assertion': 'good' } });
   const req = { headers: { cookie: session(ok) } };
   assert.equal(s.login.isOwner(req), true);
+  assert.equal(s.login.sessionMethod(req), 'owner');
   s.advance(7 * 24 * 3600_000);
   assert.equal(s.login.signedIn(req), false);
   assert.equal(s.login.isOwner(req), false);
+  assert.equal(s.login.sessionMethod(req), s.login.signedIn(req) ? session(ok).split('=')[1].split('.')[0] : null);
   assert.equal((await s.request('/', { headers: req.headers })).status, 302);
+});
+
+test('logout expires the app cookie and sessionMethod rejects missing and expired cookies', async t => {
+  const s = await serve(); t.after(s.close);
+  assert.equal(s.login.sessionMethod({ headers: {} }), null);
+  const ok = await s.enter('open sesame');
+  const req = { headers: { cookie: session(ok) } };
+  assert.equal(s.login.sessionMethod(req), 'passcode');
+  const response = await s.request('/auth/logout', { method: 'POST', headers: req.headers });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.equal(response.headers.get('set-cookie'), `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`);
+  assert.equal(s.login.sessionMethod({ headers: { cookie: session(response) } }), null);
+  s.advance(7 * 24 * 3600_000);
+  assert.equal(s.login.sessionMethod(req), null);
 });
