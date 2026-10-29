@@ -3,6 +3,7 @@ import { viewpoints, encounters, biologicalSilhouettes } from './encounter-direc
 export const generationIntents = Object.freeze({ invent: 'Surprise me', literal: 'Follow my description' });
 export const compositionModes = Object.freeze({ wildlife: 'Wildlife encounter', reference: 'Full-body reference', cutout: 'Transparent cutout' });
 export const aspectRatios = Object.freeze(['1:1', '3:2', '2:3', '16:9', '9:16']);
+// Trust-boundary limits keep user-supplied feature lists bounded in prompts and storage.
 export const MAX_REQUIREMENT_COUNT = 20;
 export const MAX_REQUIREMENT_LENGTH = 300;
 export const DEFAULT_DIRECTION_LOCKS = Object.freeze({ viewpoint: null, encounter: null, silhouette: null, inspirations: false });

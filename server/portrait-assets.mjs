@@ -4,6 +4,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { PORTRAIT_KINDS, portraitFilename, portraitVersionOf } from '../shared/specimen-assets.mjs';
 
+// Trust-boundary limits bound untrusted image decoding memory and file size.
 export const MAX_PORTRAIT_BYTES = 30 * 1024 * 1024;
 export const MAX_PORTRAIT_PIXELS = 32_000_000;
 export const MAX_PORTRAIT_DIMENSION = 16_384;

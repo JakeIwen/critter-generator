@@ -56,7 +56,7 @@ switches themes and remembers the choice when browser storage is available.
 1. Describe the lifeform or start from a preset. A nonempty description is followed directly; leave it
    blank for speculative invention. Presets fill the description and personality sliders.
 2. Open **Requirements & direction controls**, then **Animal inspiration**, to optionally choose up to
-   three groups. Every selected group is used together. **Any animal** clears the selection and
+   the configured maximum (three groups by default). Every selected group is used together. **Any animal** clears the selection and
    restores automatic sampling.
 3. Adjust **Absurdity**, **Sexual deviancy**, **Femme**, **Psychedelic**, and **Lethality**. The reproductive
    setting is clinical zoological biology; Femme means ornament and poise, never sexualization.
@@ -67,8 +67,8 @@ switches themes and remembers the choice when browser storage is available.
    preview; submitting an unchanged preview uses that exact plan.
 5. Click **Generate lifeform**. Codex writes the organism and field notes, then generates its portrait.
    This step never creates CAD, including when an older client sends `printModel: true`.
-   The loader estimates time from the latest five successful complete discoveries, excluding runs
-   longer than six minutes, with a 130-second initial fallback. Its percentage is an elapsed-time estimate, not measured model completion.
+   By default, the loader estimates time from the latest five successful complete discoveries, excluding runs
+   longer than six minutes, with a 130-second initial fallback; all three values are editable in Settings. Its percentage is an elapsed-time estimate, not measured model completion.
 6. Use **Another portrait** for a new image of the same species, or **Edit this portrait** for a targeted
    change using the current image as reference. Earlier versions remain downloadable. Accepted visual
    edits take precedence over original appearance text in later portraits; the biological record stays
@@ -108,18 +108,44 @@ plan and actual prompts. CAD proportions never constrain the initial biological 
 
 The owner-only **Settings** page (the Settings tab appears for the owner; localhost is always the
 owner) selects a model from one menu grouped by provider (Codex first, then Claude), plus its supported
-reasoning effort for new jobs. Each group shows the first six newest models returned by that provider,
-plus the saved model if it falls outside those six. Codex rows show only the model id (for example,
+reasoning effort for new jobs. Each group shows the configured number of newest models returned by that provider (six by default),
+plus the saved model if it falls outside that limit. Codex rows show only the model id (for example,
 `gpt-6-astra`); Claude rows show the label and resolved identity (for example,
 `Default · claude-opus-5-5[1m]`). Default models are marked `(default)` unless the Claude label already
-says `Default`; the `(recommended)` suffix is removed. The `ultra` effort is neither offered nor
-accepted. The default selection is Codex / gpt-6-astra / Maximum.
+says `Default`; the `(recommended)` suffix is removed. Efforts checked under **Hidden efforts** are neither offered nor
+accepted; `ultra` is hidden by default. The default selection is Codex / gpt-6-astra / Maximum.
 
 Save applies the selection to the next job; portraits always use Codex image generation. Refresh
 models rediscovers the models available to the host's signed-in subscription accounts (cached for
-15 minutes). Unavailable providers keep their group with a disabled reason option and a note below
+15 minutes by default, configurable). Unavailable providers keep their group with a disabled reason option and a note below
 the control. An unavailable account or model fails a job with a clear message rather than silently
 switching.
+
+The **App settings** card saves host-wide preferences without a restart. Hover a field label for its
+help text. **Reset to defaults** only fills the form; **Save** persists it. Settings use one definition
+table (`shared/app-settings.mjs`) and live in SQLite's `app_metadata`, not browser storage.
+
+| Setting | Default | Allowed range |
+|---|---|---|
+| Successful runs to average | 5 runs | 1–20 |
+| Ignore runs longer than | 6 minutes | 1–60 minutes |
+| Initial estimate | 130 seconds | 10–1800 seconds |
+| Model turn timeout, both providers | 10 minutes | 1–60 minutes |
+| Design attempts after runaway output | 3 attempts | 1–5 |
+| Animal inspiration limit | 3 groups | 1–all animal groups (currently 18) |
+| Models per provider | 6 models | 1–30 |
+| Hidden efforts | `ultra` | Checkboxes from raw discovery plus saved hidden values |
+| Model list freshness | 15 minutes | 1–1440 minutes |
+
+Timing changes immediately rebuild the estimate from durable jobs; existing jobs keep their frozen
+estimate. New provider turns use the new timeout. Lowering the inspiration limit trims the current
+form selection, without limiting valid API clients. Model-menu and effort changes apply to cached
+models without rediscovery. Hiding the saved generation effort is rejected: save a different model
+selection/effort first. Fixed security, trust-boundary, CAD and protocol limits remain in code.
+
+Owners can `GET`/`PUT /api/settings/app`; PUT accepts the full values object and both return
+`{ values, efforts }`. Public `/api/status` and `/api/connect` expose only
+`config: { maxAnimalInspirations, timingWindow }` from these preferences.
 
 Generation stats show the timing estimate and excluded outliers, job totals by kind and status,
 completed-job durations, the ten newest jobs and results grouped by model.

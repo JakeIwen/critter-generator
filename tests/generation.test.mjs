@@ -1,3 +1,4 @@
+import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
@@ -7,7 +8,6 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { createAnatomyPlan } from '../shared/anatomy-plan.mjs';
-import { TIMING_WINDOW } from '../shared/generation-timing.mjs';
 import { Settings } from '../shared/specimen.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -165,10 +165,10 @@ test('HTTP loader estimate uses the timing window of completed generations and f
   }
   const { origin, get, post } = await isolatedGenerationServer(t, { seedJobs });
   const before = (await get('/api/status')).generationTiming;
-  const previousDurations = seedJobs.filter(job => job.id.startsWith('history-')).slice(-TIMING_WINDOW)
+  const previousDurations = seedJobs.filter(job => job.id.startsWith('history-')).slice(-DEFAULT_APP_SETTINGS.timingWindow)
     .map(job => Date.parse(job.finishedAt) - Date.parse(job.createdAt));
-  const expectedAverage = previousDurations.reduce((sum, duration) => sum + duration, 0) / TIMING_WINDOW;
-  assert.equal(before.sampleCount, TIMING_WINDOW);
+  const expectedAverage = previousDurations.reduce((sum, duration) => sum + duration, 0) / DEFAULT_APP_SETTINGS.timingWindow;
+  assert.equal(before.sampleCount, DEFAULT_APP_SETTINGS.timingWindow);
   assert.equal(before.averageDurationMs, expectedAverage);
   assert.equal(before.estimatedDurationMs, expectedAverage);
   const connected = await fetch(origin + '/api/connect', { method: 'POST', headers, body: '{}' });
@@ -179,9 +179,9 @@ test('HTTP loader estimate uses the timing window of completed generations and f
   assert.equal(job.estimatedDurationMs, before.estimatedDurationMs);
   assert.equal(job.durationMs, Date.parse(job.finishedAt) - Date.parse(job.createdAt));
   const after = (await get('/api/status')).generationTiming;
-  assert.equal(after.sampleCount, TIMING_WINDOW);
+  assert.equal(after.sampleCount, DEFAULT_APP_SETTINGS.timingWindow);
   const retainedTotal = previousDurations.slice(1).reduce((sum, duration) => sum + duration, 0);
-  assert(Math.abs(after.averageDurationMs - (retainedTotal + job.durationMs) / TIMING_WINDOW) <= 1);
+  assert(Math.abs(after.averageDurationMs - (retainedTotal + job.durationMs) / DEFAULT_APP_SETTINGS.timingWindow) <= 1);
   assert.equal(after.estimatedDurationMs, after.averageDurationMs);
   assert.equal((await get(`/api/jobs/${job.id}`)).estimatedDurationMs, expectedAverage, 'Current job keeps its original estimate');
 });

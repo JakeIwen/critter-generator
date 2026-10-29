@@ -1,8 +1,10 @@
+import { createAppSettingsCard } from './app-settings-card.js';
 import { PROVIDERS, effortLabel, joinModelValue, menuModels, providerLabels, splitModelValue } from '../shared/generation-models.mjs';
 import { api } from './api.js';
 import { durationLabel, localDateTime, menuModelLabel, modelLabel } from './settings-format.js';
 import { escape } from './specimen-format.js';
 
+// UI polling cadence bounds refresh feedback without changing provider freshness.
 const REFRESH_INTERVAL_MS = 2000;
 const REFRESH_LIMIT_MS = 30_000;
 const modelsUrl = '/api/models';
@@ -10,12 +12,13 @@ const selectedModel = state => state.catalog?.providers.find(item => item.provid
   ?.models.find(item => item.id === state.draft.model);
 const option = (value, label, selected, disabled = false) => `<option value="${escape(value)}"${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}>${escape(label)}</option>`;
 
-// The menu shows each provider's first six models plus the saved one; every choice must come from that list.
-const visibleModels = (state, provider) => menuModels(provider.models, state.selection?.provider === provider.provider ? state.selection.model : null);
+// Keep the saved model reachable even when the menu limit is lowered.
+const visibleModels = (state, provider) => menuModels(provider.models, state.selection?.provider === provider.provider ? state.selection.model : null, state.app.values.menuModelsPerProvider);
 
 function chooseModel(state) {
   let model = selectedModel(state);
-  if (!model) {
+  const currentProvider = state.catalog?.providers.find(item => item.provider === state.draft.provider);
+  if (!model || !visibleModels(state, currentProvider).includes(model)) {
     const provider = Object.values(PROVIDERS).map(id => state.catalog?.providers.find(item => item.provider === id))
       .find(item => item?.available && item.models.length);
     if (!provider) return;
@@ -43,7 +46,7 @@ function modelGroups(state) {
 function generationCard(state) {
   const efforts = selectedModel(state)?.efforts ?? [];
   const hasModels = state.catalog.providers.some(provider => provider.available && provider.models.length);
-  const busy = state.loading || state.refreshing || state.saving;
+  const busy = state.loading || state.refreshing || state.saving || state.app.saving;
   const reasons = (state.catalog?.providers ?? []).filter(item => !item.available)
     .map(item => `<p class="settings-note settings-reason">${escape(providerLabels[item.provider])}: ${escape(item.reason || 'Unavailable.')}</p>`).join('');
   return `<article class="card settings-card">
@@ -72,11 +75,11 @@ function table(heading, headers, rows) {
   </tbody></table></div>`;
 }
 
-function statsCard(stats) {
+function statsCard(stats, settings) {
   if (!stats) return '';
   const timing = stats.timing ?? {};
   return `<article class="card settings-card settings-stats"><h2>Generation stats</h2>
-    <p class="settings-note">Estimate ${escape(durationLabel(timing.estimatedDurationMs))} · ${escape(timing.sampleCount ?? 0)} samples · ${escape(timing.excludedOutliers ?? 0)} excluded over six minutes</p>
+    <p class="settings-note">Estimate ${escape(durationLabel(timing.estimatedDurationMs))} · ${escape(timing.sampleCount ?? 0)} samples · ${escape(timing.excludedOutliers ?? 0)} excluded over ${escape(settings.timingOutlierMinutes)} min</p>
     ${!stats.recent.length ? '<p class="settings-note">No jobs recorded yet.</p>' : ''}
     ${table('Totals', ['Kind', 'Status', 'Count'], stats.totals.map(row => [row.kind, row.status, row.count]))}
     ${table('Durations by kind', ['Kind', 'Count', 'Average', 'Median', 'Min', 'Max'], stats.durations.map(row => [row.kind, row.count, ...[row.averageMs, row.medianMs, row.minMs, row.maxMs].map(durationLabel)]))}
@@ -89,7 +92,7 @@ function render(section, state) {
   section.innerHTML = `<div class="collection-heading"><h2>Settings</h2></div>
     <p class="settings-error" role="alert">${escape(state.error)}</p>
     ${state.loading ? '<p class="settings-note" role="status">Loading settings…</p>' : ''}
-    ${state.catalog ? `<div class="settings-grid">${generationCard(state)}${statsCard(state.stats)}</div>` : ''}`;
+    ${state.catalog ? `<div class="settings-grid">${generationCard(state)}${state.app.render(state.loading || state.refreshing || state.saving)}${statsCard(state.stats, state.app.values)}</div>` : ''}`;
 }
 
 async function fetchModels(state, refresh, update) {
@@ -97,6 +100,7 @@ async function fetchModels(state, refresh, update) {
   let response = await api(`${modelsUrl}${refresh ? '?refresh=1' : ''}`, { signal: AbortSignal.timeout(REFRESH_LIMIT_MS) });
   while (true) {
     state.catalog = response.catalog;
+    state.app.includeEfforts(response.catalog.efforts ?? []);
     state.selection = response.selection;
     chooseModel(state);
     state.refreshing = response.catalog.refreshing;
@@ -108,16 +112,21 @@ async function fetchModels(state, refresh, update) {
   }
 }
 
-export function mountSettingsPage(byId, { onError }) {
+export function mountSettingsPage(byId, { onError, onSaved = () => {} }) {
   const section = byId('settings');
   const state = { catalog: null, stats: null, selection: null, draft: {}, error: '', saved: '', loading: false, refreshing: false, saving: false };
   const update = () => render(section, state);
   const fail = error => { state.error = error.message; onError(error.message); };
+  state.app = createAppSettingsCard({ update, onError: fail, async onSaved() {
+    state.error = '';
+    const [, stats] = await Promise.all([fetchModels(state, false, update), api('/api/stats')]);
+    state.stats = stats; await onSaved();
+  } });
   async function show() {
-    if (state.loading || state.refreshing || state.saving) return;
+    if (state.loading || state.refreshing || state.saving || state.app.saving) return;
     state.loading = true; state.error = ''; state.saved = ''; update();
     try {
-      const [models, stats] = await Promise.all([api(modelsUrl), api('/api/stats')]);
+      const [models, stats] = await Promise.all([api(modelsUrl), api('/api/stats'), state.app.load()]);
       state.catalog = models.catalog; state.selection = models.selection;
       state.draft = { ...models.selection }; state.stats = stats; chooseModel(state);
       if (models.catalog.refreshing) await fetchModels(state, false, update);
@@ -132,7 +141,7 @@ export function mountSettingsPage(byId, { onError }) {
   }
   async function save(event) {
     event.preventDefault();
-    if (state.loading || state.refreshing || state.saving) return;
+    if (state.loading || state.refreshing || state.saving || state.app.saving) return;
     state.saving = true; state.error = ''; state.saved = ''; update();
     try {
       const { provider, model, effort } = state.draft;
@@ -142,13 +151,20 @@ export function mountSettingsPage(byId, { onError }) {
     } catch (error) { fail(error); }
     finally { state.saving = false; update(); }
   }
-  section.onsubmit = save;
+  section.onsubmit = event => event.target?.id === 'app-settings-form' ? state.app.save(event) : save(event);
+  section.oninput = event => {
+    if (state.app.change(event.target)) section.querySelector('#app-settings-status').textContent = '';
+  };
   section.onchange = event => {
+    if (state.app.change(event.target)) return;
     if (event.target.id === 'settings-model') Object.assign(state.draft, splitModelValue(event.target.value));
     else if (event.target.id === 'settings-effort') state.draft.effort = event.target.value;
     else return;
     state.saved = ''; chooseModel(state); update();
   };
-  section.onclick = event => { if (event.target.closest('#settings-refresh')) void refresh(); };
+  section.onclick = event => {
+    if (event.target.closest('#settings-refresh')) void refresh();
+    if (event.target.closest('#app-settings-reset')) state.app.reset();
+  };
   return { show };
 }

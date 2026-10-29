@@ -5,6 +5,7 @@ import path from 'node:path';
 import { GENERATION_PROMPT_VERSION } from '../shared/generation-options.mjs';
 import { safeError } from './codex.mjs';
 
+// Trace versions are a durable format contract, not a runtime preference.
 export const TRACE_VERSION = 1;
 
 export function traceFile(store, jobId) {

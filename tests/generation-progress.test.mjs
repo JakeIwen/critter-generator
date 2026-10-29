@@ -136,3 +136,15 @@ test('invalid estimates and older timing records safely use a valid estimate', (
   view.progress.start('fallback-job', undefined, Infinity);
   assert.equal(view.nodes['status-estimate'].textContent, 'Estimated generation time: 2m 10s');
 });
+
+
+test('progress sample tooltip follows the public timing window without changing the active estimate', () => {
+  const view = clockView();
+  view.progress.start('job', undefined, 200_000);
+  view.progress.setTiming({ estimatedDurationMs: 60_000, sampleCount: 14 }, { timingWindow: 12 });
+  assert.match(view.nodes['generation-estimate'].title, /last 12 completed generations/);
+  view.progress.setTiming({ estimatedDurationMs: 60_000, sampleCount: 14 }, { timingWindow: 2 });
+  assert.match(view.nodes['generation-estimate'].title, /last 2 completed generations/);
+  view.advance(100);
+  assert.equal(view.nodes['status-progress'].value, 47.5);
+});

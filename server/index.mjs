@@ -1,3 +1,4 @@
+import { publicAppSettings } from '../shared/app-settings.mjs';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -17,14 +18,16 @@ import { createLogin } from './login.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const distRoot = process.env.CRITTER_DIST_DIR || path.join(root, 'dist');
+// Host, port and login environment stay deployment-owned: web edits could lock the owner out.
 const port = Number(process.env.PORT || 4329);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('PORT must be an integer from 1024 to 65535.');
 const store = new Store(process.env.CRITTER_DATA_DIR || path.join(root, '.local'));
 const workspace = path.join(store.root, 'workspace');
-const codex = new Codex(workspace);
-const claude = new Claude(workspace);
+const getSettings = () => store.appSettings();
+const codex = new Codex(workspace, { getSettings });
+const claude = new Claude(workspace, { getSettings });
 const providers = { [PROVIDERS.CODEX]: codex, [PROVIDERS.CLAUDE]: claude };
-const catalog = new ModelCatalog({ discoverers: Object.fromEntries(
+const catalog = new ModelCatalog({ getSettings, discoverers: Object.fromEntries(
   Object.entries(providers).map(([id, provider]) => [id, () => provider.models()])) });
 const app = express();
 const stopToken = randomUUID();
@@ -34,6 +37,7 @@ const localHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
 // Optional public hosting behind Cloudflare Access (e.g. https://critter.lionfeather.dev).
 // Requests for that host need a session from server/login.mjs; localhost stays as before.
 const publicOrigin = process.env.PUBLIC_ORIGIN ? new URL(process.env.PUBLIC_ORIGIN) : null;
+// Login rate limits stay fixed security policy, never owner-adjustable preferences.
 const login = publicOrigin ? createLogin({ publicOrigin, passcode: process.env.CRITTER_PASSCODE,
   verifyAccess: createAccessVerifier({ teamDomain: process.env.ACCESS_TEAM_DOMAIN, audience: process.env.ACCESS_AUD }),
   ownerEmail: process.env.CRITTER_OWNER_EMAIL, secretFile: path.join(store.root, 'session-secret') }) : null;
@@ -60,7 +64,7 @@ if (login) app.use((req, res, next) => isPublicHost(req) ? login.router(req, res
 app.use(express.json({ limit: '64kb' }));
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
-const jobs = new GenerationJobs({ store, providers, catalog });
+const jobs = new GenerationJobs({ store, providers, catalog, getSettings });
 if (!store.get('specimens', 'example-lantern')) {
   store.save('specimens', 'example-lantern', { ...example, anatomy: null,
     id: 'example-lantern', demo: true, image: false, print: null,
@@ -79,6 +83,7 @@ const connectionStatus = req => ({ ...codex.state, owner: isOwner(req),
   session: isPublicHost(req) ? login.sessionMethod(req) : null,
   generation: (({ provider, model, effort }) => ({ provider, model, effort }))(store.generationModel()),
   connection: Object.fromEntries(Object.entries(providers).map(([id, provider]) => [id, provider.state])),
+  config: publicAppSettings(getSettings()),
   activeJob: jobs.current?.job.id || null, generationTiming: store.generationTiming() });
 app.get('/api/status', (req, res) => res.json(connectionStatus(req)));
 app.post('/api/shutdown', (req, res) => {

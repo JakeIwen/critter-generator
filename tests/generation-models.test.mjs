@@ -1,13 +1,14 @@
+import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROVIDERS, MENU_MODELS_PER_PROVIDER, menuModels, joinModelValue, splitModelValue } from '../shared/generation-models.mjs';
+import { PROVIDERS, menuModels, joinModelValue, splitModelValue } from '../shared/generation-models.mjs';
 import { menuModelLabel, modelLabel } from '../src/settings-format.js';
 import { mountSettingsPage } from '../src/settings-page.js';
 
 const models = Object.freeze(Array.from({ length: 10 }, (_, index) => Object.freeze({ id: `model-${index}` })));
 
 test('model menu keeps the first six in discovery order without changing the catalog', () => {
-  assert.equal(MENU_MODELS_PER_PROVIDER, 6);
+  assert.equal(DEFAULT_APP_SETTINGS.menuModelsPerProvider, 6);
   assert.deepEqual(menuModels(models), models.slice(0, 6));
   assert.equal(models.length, 10);
 });
@@ -61,6 +62,7 @@ async function settingsFixture(t, { providers, selection }) {
   t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
     let body;
     if (url === '/api/models') body = { catalog: { providers, refreshing: false }, selection };
+    else if (url === '/api/settings/app') body = { values: structuredClone(DEFAULT_APP_SETTINGS), efforts: ['low', 'medium', 'high', 'max', 'ultra'] };
     else if (url === '/api/stats') body = { recent: [], totals: [], durations: [], byModel: [] };
     else if (url === '/api/settings/generation' && options.method === 'PUT') {
       saved.push(JSON.parse(options.body));
@@ -117,4 +119,10 @@ test('Settings falls back to the first provider when a saved model is missing, u
   assert.match(section.innerHTML, /<option value="codex\|model-0" selected>/);
   await section.onsubmit({ preventDefault() {} });
   assert.deepEqual(saved, [{ provider: PROVIDERS.CODEX, model: 'model-0', effort: 'low' }]);
+});
+
+
+test('model menu applies a configured cap and still appends the saved model', () => {
+  assert.deepEqual(menuModels(models, 'model-8', 1), [models[0], models[8]]);
+  assert.deepEqual(menuModels(models, 'model-8', 30), models);
 });

@@ -85,3 +85,26 @@ test('an unavailable selected provider fails a job before any billable stage, ev
   assert.equal(job.status, 'partial'); assert.equal(job.message, 'Claude is not signed in.');
   assert.equal(calls.length, 0);
 });
+
+
+test('new designs use the live configured attempt limit only for runaway output', async t => {
+  const { store, providers, settings } = await setup(t);
+  let attempts = 0;
+  providers.codex.run = async () => {
+    attempts++;
+    throw Object.assign(new Error('Stalled fixture output'), { code: 'runaway_output' });
+  };
+  const jobs = new GenerationJobs({ store, providers, getSettings: () => store.appSettings() });
+  for (const designAttempts of [1, 4]) {
+    store.saveAppSettings({ ...store.appSettings(), designAttempts, initialEstimateSeconds: 80 }); attempts = 0;
+    const { jobId, estimatedDurationMs } = jobs.start({ settings });
+    assert.equal(estimatedDurationMs, 80_000);
+    store.saveAppSettings({ ...store.appSettings(), initialEstimateSeconds: 70 });
+    await jobs.current?.promise;
+    assert.equal(store.get('jobs', jobId).estimatedDurationMs, 80_000);
+    assert.equal(attempts, designAttempts); assert.equal(store.get('jobs', jobId).status, 'failed');
+    assert.equal(readTrace(store, jobId).steps.filter(step => step.stage === 'design').length, designAttempts);
+  }
+  providers.codex.run = async () => { attempts++; throw new Error('Not retryable'); };
+  attempts = 0; jobs.start({ settings }); await jobs.current?.promise; assert.equal(attempts, 1);
+});

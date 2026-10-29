@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { DEFAULT_APP_SETTINGS, publicAppSettings } from '../shared/app-settings.mjs';
 const origin = `http://127.0.0.1:${process.env.PORT || 4329}`;
 const status = await (await fetch(origin + '/api/status')).json();
 assert.equal(status.owner, true);
 assert.equal(status.session, null);
+assert.deepEqual(status.config, publicAppSettings(DEFAULT_APP_SETTINGS));
 assert.deepEqual(status.generation, { provider: 'codex', model: 'gpt-6-astra', effort: 'max' });
 assert.equal(typeof status.connection.codex.connected, 'boolean');
 assert.equal(typeof status.connection.claude.connected, 'boolean');
@@ -27,6 +29,24 @@ for (const key of ['totals', 'durations', 'recent', 'byModel']) assert(Array.isA
 const unavailable = await fetch(origin + '/api/settings/generation', { method: 'PUT',
   headers: { 'Content-Type': 'application/json', 'X-Critter-Request': '1' }, body: JSON.stringify(selection) });
 assert.equal(unavailable.status, 400); assert.equal(typeof (await unavailable.json()).error, 'string');
+const appSettings = await (await fetch(origin + '/api/settings/app')).json();
+assert.deepEqual(appSettings.values, DEFAULT_APP_SETTINGS);
+assert(appSettings.efforts.includes('ultra'));
+const changedSettings = { ...appSettings.values, timingWindow: 2, initialEstimateSeconds: 90, maxAnimalInspirations: 1 };
+const putSettings = values => fetch(origin + '/api/settings/app', { method: 'PUT',
+  headers: { 'Content-Type': 'application/json', 'X-Critter-Request': '1' }, body: JSON.stringify(values) });
+assert.equal((await putSettings(changedSettings)).status, 200);
+assert.deepEqual((await (await fetch(origin + '/api/settings/app')).json()).values, changedSettings);
+const changedStatus = await (await fetch(origin + '/api/status')).json();
+assert.deepEqual(changedStatus.config, publicAppSettings(changedSettings));
+assert.equal(changedStatus.generationTiming.estimatedDurationMs, 90_000);
+const uncappedPlan = await fetch(origin + '/api/plan', { method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Critter-Request': '1' },
+  body: JSON.stringify({ absurdity: 65, deviancy: 35, lethality: 20,
+    animalTypes: ['mammals', 'birds', 'reptiles', 'amphibians'], directionLocks: { inspirations: true } }) });
+assert.equal(uncappedPlan.status, 200, 'The form cap does not restrict valid API inspiration sets.');
+assert.deepEqual((await uncappedPlan.json()).plan.inspirationIds, ['mammals', 'birds', 'reptiles', 'amphibians']);
+assert.equal((await putSettings(appSettings.values)).status, 200);
 const specimens = await (await fetch(origin+'/api/specimens')).json();
 assert(specimens.length > 0);
 for (const s of specimens) {

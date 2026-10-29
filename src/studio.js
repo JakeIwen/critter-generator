@@ -14,11 +14,12 @@ export function mountStudio() {
   let specimens = [], owner = false;
   const showCollection = () => renderCollection(byId, specimens, selectFromCollection, owner, archiveSpecimen);
   const setOwner = value => { if (owner !== value) { owner = value; showCollection(); } };
+  // Toast lifetime is transient UI feedback, not an app-wide generation preference.
   const toast = message => {
     byId('toast').textContent = message; byId('toast').classList.remove('hidden');
     clearTimeout(toast.timer); toast.timer = setTimeout(() => byId('toast').classList.add('hidden'), 9000);
   };
-  const settingsPage = mountSettingsPage(byId, { onError: toast });
+  const settingsPage = mountSettingsPage(byId, { onError: toast, onSaved: () => connection.check() });
   const setPage = page => {
     byId('laboratory').classList.toggle('hidden', page !== 'lab');
     byId('collection').classList.toggle('hidden', page !== 'collection');
@@ -66,7 +67,7 @@ export function mountStudio() {
   });
   document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => setPage(button.dataset.page));
   document.querySelector('.brand').onclick = event => { event.preventDefault(); setPage('lab'); };
-  const connection = mountConnection(byId, jobs, toast, setOwner);
+  const connection = mountConnection(byId, jobs, toast, setOwner, form.setConfig);
   void initialize(loadSpecimens, connection, toast);
 }
 

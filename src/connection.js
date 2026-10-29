@@ -3,7 +3,7 @@ import { api } from './api.js';
 
 const sessionLabels = { owner: 'Signed in as owner', email: 'Signed in by email', passcode: 'Signed in with the passcode' };
 
-export function mountConnection(byId, jobs, toast, setOwner = () => {}) {
+export function mountConnection(byId, jobs, toast, setOwner = () => {}, setConfig = () => {}) {
   let label = providerLabels[PROVIDERS.CODEX];
   async function check(reconnect = false) {
     try {
@@ -22,7 +22,8 @@ export function mountConnection(byId, jobs, toast, setOwner = () => {}) {
         ? `Using ${model ?? 'the selected model'} (${effortLabel(status.generation?.effort)}) through ${label}`
         : connection.reason || `${label} is unavailable.`;
       if (sessionLabels[status.session]) byId('connection').title += ` · ${sessionLabels[status.session].toLowerCase()}`;
-      jobs.setTiming(status.generationTiming);
+      setConfig(status.config);
+      jobs.setTiming(status.generationTiming, status.config);
       jobs.resume(status.activeJob || sessionStorage.getItem('critter-job'));
     } catch(error) {
       byId('connection').querySelector('span').textContent = `${label} offline · Retry`;
@@ -38,6 +39,7 @@ export function mountConnection(byId, jobs, toast, setOwner = () => {}) {
   return {
     check,
     resumeSavedJob() { jobs.resume(sessionStorage.getItem('critter-job')); },
+    // Status polling is UI feedback, independent of generation/model cache policy.
     startPolling() { setInterval(() => void check(), 15000); },
   };
 }
