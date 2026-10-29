@@ -107,11 +107,19 @@ plan and actual prompts. CAD proportions never constrain the initial biological 
 ### Settings
 
 The owner-only **Settings** page (the Settings tab appears for the owner; localhost is always the
-owner) selects the provider, model and supported reasoning effort for new jobs. The default is
-Codex / GPT-6 Astra / Maximum. Save applies the selection to the next job; portraits always use
-Codex image generation. Refresh models rediscovers the models available to the host's signed-in
-subscription accounts (cached for 15 minutes) and shows any provider availability problem. An
-unavailable account or model fails a job with a clear message rather than silently switching.
+owner) selects a model from one menu grouped by provider (Codex first, then Claude), plus its supported
+reasoning effort for new jobs. Each group shows the first six newest models returned by that provider,
+plus the saved model if it falls outside those six. Codex rows show only the model id (for example,
+`gpt-6-astra`); Claude rows show the label and resolved identity (for example,
+`Default · claude-opus-5-5[1m]`). Default models are marked `(default)` unless the Claude label already
+says `Default`; the `(recommended)` suffix is removed. The `ultra` effort is neither offered nor
+accepted. The default selection is Codex / gpt-6-astra / Maximum.
+
+Save applies the selection to the next job; portraits always use Codex image generation. Refresh
+models rediscovers the models available to the host's signed-in subscription accounts (cached for
+15 minutes). Unavailable providers keep their group with a disabled reason option and a note below
+the control. An unavailable account or model fails a job with a clear message rather than silently
+switching.
 
 Generation stats show the timing estimate and excluded outliers, job totals by kind and status,
 completed-job durations, the ten newest jobs and results grouped by model.

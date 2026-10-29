@@ -19,7 +19,8 @@ function subscriptionReason(account) {
 function listedModels(models) {
   return models.map(model => {
     const efforts = model.supportsEffort ? model.supportedEffortLevels ?? [] : [];
-    return { id: model.value, label: (model.displayName || model.value).slice(0, 120),
+    return { id: model.value, resolvedModel: model.resolvedModel ?? null,
+      label: (model.displayName || model.value).replace(/\s*\(recommended\)\s*$/i, '').slice(0, 120),
       description: model.description?.slice(0, 1000) ?? null, efforts,
       defaultEffort: efforts.includes('high') ? 'high' : efforts[Math.floor(efforts.length / 2)] ?? null,
       isDefault: model.isDefault ?? model.value === 'default' };

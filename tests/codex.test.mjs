@@ -74,8 +74,8 @@ test('Codex lists every visible model page and maps model metadata', async () =>
   const client = new ProtocolFixture();
   const models = await client.models();
   assert.deepEqual(models, [
-    { id: 'gpt-6-astra', label: 'Astra', description: 'Astra model', efforts: ['medium', 'max'], defaultEffort: 'medium', isDefault: true },
-    { id: 'other-model', label: 'Other', description: 'Another model', efforts: [], defaultEffort: null, isDefault: false },
+    { id: 'gpt-6-astra', resolvedModel: null, label: 'Astra', description: 'Astra model', efforts: ['medium', 'max'], defaultEffort: 'medium', isDefault: true },
+    { id: 'other-model', resolvedModel: null, label: 'Other', description: 'Another model', efforts: [], defaultEffort: null, isDefault: false },
   ]);
   for (const request of client.requests) assert.equal(request.params.includeHidden, false);
   assert(client.requests.some(request => request.params.cursor === 'page-2'));

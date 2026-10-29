@@ -72,7 +72,7 @@ export class Codex {
     let cursor;
     do {
       const page = await this.rpc('model/list', { includeHidden: false, limit: 100, ...(cursor ? { cursor } : {}) });
-      models.push(...page.data.map(model => ({ id: model.model, label: model.displayName || model.model,
+      models.push(...page.data.map(model => ({ id: model.model, resolvedModel: null, label: model.displayName || model.model,
         description: model.description ?? null,
         efforts: (model.supportedReasoningEfforts ?? []).map(effort => effort.reasoningEffort),
         defaultEffort: model.defaultReasoningEffort ?? null, isDefault: Boolean(model.isDefault) })));

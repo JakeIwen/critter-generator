@@ -48,13 +48,13 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `server/geometry.mjs`: solid geometry, STL, and OpenSCAD generation.
 - `server/sculpt-head.mjs`: connected head, eyes, horns and antennae shared by the STL/SCAD recipe.
 - `server/access.mjs` and `server/login.mjs`: optional public-host authentication.
-- `shared/generation-models.mjs`: browser-safe provider vocabulary, default selection (Codex `gpt-6-astra` at `max`), effort labels and stage→provider routing.
+- `shared/generation-models.mjs`: browser-safe provider vocabulary, default selection (Codex `gpt-6-astra` at `max`), six-model menu limit/selection values, hidden efforts, effort labels and stage→provider routing.
 - `shared/generation-instructions.mjs`: the common generation instructions both providers receive.
 - `server/model-catalog.mjs`: validated account model discovery for Codex and Claude, freshness/retry caching and selection validation.
 - `server/claude.mjs` and `server/provider-cli.mjs`: restricted Claude subscription adapter (Agent SDK, structured output, reference images), executable resolution and environment allowlist.
 - `server/settings-routes.mjs` and `server/generation-stats.mjs`: owner-only model/settings/statistics endpoints and pure historical aggregation.
 - `src/theme.js`: dark-default theme (`critter-theme` in localStorage), toggle wiring and theme-color mirrors.
-- `src/settings-page.js` and `src/settings-format.js`: owner-only Settings page (provider/model/effort selection, generation stats) and its duration/date/model formatting.
+- `src/settings-page.js` and `src/settings-format.js`: owner-only Settings page (one grouped model menu and effort selection, generation stats) and its duration/date/model formatting. The menu shows the first six newest models per provider plus the saved model, Codex ids, and Claude labels with resolved identities; `ultra` is hidden and rejected by catalog validation.
 - `scripts/check.mjs`: complete isolated suite (`npm run check`).
 - `scripts/deploy.mjs`: invokes the hosting repo's Critter deployer with this source checkout; `npm run deploy` runs the complete suite first. `LIONFEATHER_EDGE_DIR` overrides the default sibling hosting checkout.
 - `scripts/verify-http.mjs`: HTTP and binary-output checks against a running isolated server.

@@ -1,4 +1,4 @@
-import { effortLabel, providerLabels } from '../shared/generation-models.mjs';
+import { PROVIDERS, effortLabel, providerLabels } from '../shared/generation-models.mjs';
 
 export function durationLabel(milliseconds) {
   if (typeof milliseconds !== 'number' || !Number.isFinite(milliseconds)) return '—';
@@ -13,4 +13,13 @@ export function localDateTime(value) {
 
 export function modelLabel({ provider, model, effort } = {}) {
   return provider && model ? `${providerLabels[provider] ?? provider} · ${model} · ${effortLabel(effort)}` : '—';
+}
+
+const menuModelLabels = Object.freeze({
+  [PROVIDERS.CODEX]: model => `${model.id}${model.isDefault ? ' (default)' : ''}`,
+  [PROVIDERS.CLAUDE]: model => `${model.label} · ${model.resolvedModel ?? model.id}${model.isDefault && model.label.toLowerCase() !== 'default' ? ' (default)' : ''}`,
+});
+
+export function menuModelLabel(provider, model) {
+  return menuModelLabels[provider](model);
 }

@@ -9,14 +9,14 @@ import { GENERATION_INSTRUCTIONS } from '../shared/generation-instructions.mjs';
 
 const model = { value: 'fable', displayName: 'Fable', supportsEffort: true, supportedEffortLevels: ['low', 'high', 'max'], isDefault: true };
 function fixture({ messages = [], account = { subscriptionType: 'max', apiProvider: 'firstParty', apiKeySource: 'none' },
-  initialization, hold = false } = {}) {
+  initialization, hold = false, models = [model] } = {}) {
   const calls = [], inputs = [];
   let closed = 0, interrupted = 0, entered;
   const started = new Promise(resolve => { entered = resolve; });
   const query = call => {
     calls.push(call);
     return { initializationResult: initialization ?? (async () => ({})), accountInfo: async () => account,
-      supportedModels: async () => [model], close: () => { closed++; }, interrupt: async () => { interrupted++; },
+      supportedModels: async () => models, close: () => { closed++; }, interrupt: async () => { interrupted++; },
       async *[Symbol.asyncIterator]() {
         for await (const input of call.prompt) inputs.push(input);
         entered();
@@ -31,7 +31,7 @@ function fixture({ messages = [], account = { subscriptionType: 'max', apiProvid
 test('Claude discovers lazily with an idle prompt and restricted subscription environment', async () => {
   const { provider, calls, closed } = fixture();
   assert.equal(calls.length, 0); assert.equal(provider.state.connected, false);
-  assert.deepEqual(await provider.models(), [{ id: 'fable', label: 'Fable', description: null,
+  assert.deepEqual(await provider.models(), [{ id: 'fable', resolvedModel: null, label: 'Fable', description: null,
     efforts: ['low', 'high', 'max'], defaultEffort: 'high', isDefault: true }]);
   const options = calls[0].options;
   assert.deepEqual(options.tools, []); assert.deepEqual(options.settingSources, []);
@@ -97,4 +97,20 @@ test('Claude discovery rejects API billing, unsigned accounts, missing executabl
   await assert.rejects(timeout.provider.models(), /discovery timed out/); assert.equal(timeout.closed(), 1);
   const missing = new Claude(os.tmpdir(), { query: () => assert.fail('Must not spawn any CLI'), resolveExecutable: () => undefined });
   await assert.rejects(missing.models(), /CLI is unavailable/);
+});
+
+test('Claude listing strips only a trailing recommended marker and carries the resolved model identity', async () => {
+  const { provider } = fixture({ models: [
+    { ...model, value: 'default', displayName: 'Default (Recommended)  ', resolvedModel: 'claude-opus-5-5[1m]' },
+    { ...model, value: 'sonnet', displayName: 'Sonnet 5.5  (recommended)', resolvedModel: 'claude-sonnet-5-5[1m]' },
+    { ...model, value: 'haiku', displayName: 'Haiku 5.5 (RECOMMENDED)', resolvedModel: 'claude-haiku-5-5' },
+    { ...model, value: 'named', displayName: 'Named (recommended) preview' },
+  ] });
+  const models = await provider.models();
+  assert.deepEqual(models.map(({ id, label, resolvedModel }) => ({ id, label, resolvedModel })), [
+    { id: 'default', label: 'Default', resolvedModel: 'claude-opus-5-5[1m]' },
+    { id: 'sonnet', label: 'Sonnet 5.5', resolvedModel: 'claude-sonnet-5-5[1m]' },
+    { id: 'haiku', label: 'Haiku 5.5', resolvedModel: 'claude-haiku-5-5' },
+    { id: 'named', label: 'Named (recommended) preview', resolvedModel: null },
+  ]);
 });

@@ -21,7 +21,7 @@ test('canonical provider routing never sends image generation to Claude', () => 
   for (const stage of TEXT_STAGES) assert.equal(providerForStage(stage, { provider: 'claude' }), 'claude');
   assert.equal(providerForStage('image', { provider: 'claude' }), 'codex');
   assert.throws(() => providerForStage('typo', DEFAULT_GENERATION_MODEL), /Unknown/);
-  assert.deepEqual(['xhigh', 'max', 'ultra', 'future'].map(effortLabel), ['Extra high', 'Maximum', 'Ultra', 'Future']);
+  assert.deepEqual(['xhigh', 'max', 'future'].map(effortLabel), ['Extra high', 'Maximum', 'Future']);
   assert(Object.isFrozen(DEFAULT_GENERATION_MODEL));
 });
 
@@ -62,12 +62,47 @@ test('selection validates model ids, supported efforts and unavailable accounts 
   assert.equal(await catalog.validateSelection(DEFAULT_GENERATION_MODEL), null);
   assert.deepEqual(calls, { codex: 1, claude: 0 }, 'Validation discovers only the chosen provider');
   assert.match(await catalog.validateSelection({ ...DEFAULT_GENERATION_MODEL, model: 'other' }), /Selected model other is not available/);
-  for (const effort of [null, 'none']) assert.match(await catalog.validateSelection({ ...DEFAULT_GENERATION_MODEL, effort }), /supported effort/);
+  for (const effort of [null, 'none', 'ultra']) assert.match(await catalog.validateSelection({ ...DEFAULT_GENERATION_MODEL, effort }), /supported effort/);
   assert.equal(await catalog.validateSelection({ provider: 'claude', model: fable.id, effort: null }), null);
   assert.match(await catalog.validateSelection({ provider: 'claude', model: fable.id, effort: 'high' }), /use null/);
-  for (const model of ['--flag', 'bad model', 'a'.repeat(121), 'bad\n']) {
+  for (const model of ['--flag', 'bad model', 'a'.repeat(121), 'bad\n', 'codex|gpt-6-astra']) {
     assert.equal(GenerationSelection.safeParse({ ...DEFAULT_GENERATION_MODEL, model }).success, false);
   }
   assert.equal(GenerationSelection.safeParse({ provider: 'claude', model: 'anthropic/claude:alias[1m]', effort: null }).success, true);
   assert.equal(GenerationSelection.safeParse({ ...DEFAULT_GENERATION_MODEL, effort: 'Max' }).success, false);
+});
+
+test('catalog strips hidden efforts and replaces a hidden default with the last remaining effort or null', async () => {
+  const catalog = new ModelCatalog({ discoverers: { codex: async () => [
+    astra,
+    { ...astra, id: 'hidden-default', defaultEffort: 'ultra' },
+    { ...astra, id: 'hidden-only', efforts: ['ultra'], defaultEffort: 'ultra' },
+  ] } });
+  const { models } = await catalog.getProvider('codex');
+  assert.deepEqual(models[0].efforts, ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(models[0].defaultEffort, 'medium');
+  assert.deepEqual(models[1].efforts, models[0].efforts);
+  assert.equal(models[1].defaultEffort, 'max');
+  assert.deepEqual(models[2].efforts, []);
+  assert.equal(models[2].defaultEffort, null);
+  for (const model of models) {
+    assert.match(await catalog.validateSelection({ provider: 'codex', model: model.id, effort: 'ultra' }), /supported effort|use null/);
+  }
+});
+
+test('catalog preserves resolved identities and defaults older model shapes to null', async () => {
+  const catalog = new ModelCatalog({ discoverers: { claude: async () => [
+    { ...fable, id: 'default', resolvedModel: 'claude-opus-5-5[1m]' },
+    fable,
+    { ...fable, id: 'explicit-null', resolvedModel: null },
+  ] } });
+  const { models } = await catalog.getProvider('claude');
+  assert.deepEqual(models.map(model => model.resolvedModel), ['claude-opus-5-5[1m]', null, null]);
+});
+
+test('catalog keeps and validates models beyond the menu limit', async () => {
+  const listed = Array.from({ length: 9 }, (_, index) => ({ ...astra, id: `model-${index}` }));
+  const catalog = new ModelCatalog({ discoverers: { codex: async () => listed } });
+  assert.equal((await catalog.getProvider('codex')).models.length, listed.length);
+  assert.equal(await catalog.validateSelection({ ...DEFAULT_GENERATION_MODEL, model: listed.at(-1).id }), null);
 });

@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { PROVIDERS, providerLabels } from '../shared/generation-models.mjs';
+import { HIDDEN_EFFORTS, PROVIDERS, providerLabels } from '../shared/generation-models.mjs';
 import { safeError } from './codex.mjs';
 
 const ModelId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,119}$/);
 const Effort = z.string().regex(/^[a-z][a-z0-9_-]{0,29}$/);
 export const GenerationSelection = z.object({ provider: z.enum(Object.values(PROVIDERS)), model: ModelId,
   effort: Effort.nullable() }).strict();
-const ListedModel = z.object({ id: ModelId, label: z.string().min(1).max(120), description: z.string().max(1000).nullable(),
+const ListedModel = z.object({ id: ModelId, resolvedModel: ModelId.nullable().default(null), label: z.string().min(1).max(120), description: z.string().max(1000).nullable(),
   efforts: z.array(Effort), defaultEffort: Effort.nullable(), isDefault: z.boolean() });
 export const CATALOG_FRESH_MS = 15 * 60_000;
 export const CATALOG_RETRY_MS = 60_000;
@@ -36,7 +36,11 @@ export class ModelCatalog {
       const discover = this.discoverers[provider];
       if (!discover) throw new Error(`${providerLabels[provider]} is not configured on this host.`);
       const result = await discover();
-      const models = z.array(ListedModel).parse(Array.isArray(result) ? result : result.models ?? []);
+      const models = z.array(ListedModel).parse(Array.isArray(result) ? result : result.models ?? []).map(model => {
+        const efforts = model.efforts.filter(effort => !HIDDEN_EFFORTS.includes(effort));
+        return { ...model, efforts,
+          defaultEffort: HIDDEN_EFFORTS.includes(model.defaultEffort) ? efforts.at(-1) ?? null : model.defaultEffort };
+      });
       next = models.length && result.available !== false
         ? { available: true, models, reason: null }
         : { available: false, models: [], reason: safeError(result.reason || `No ${providerLabels[provider]} models are available to this account.`) };

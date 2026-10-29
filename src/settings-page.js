@@ -1,39 +1,57 @@
-import { PROVIDERS, effortLabel, providerLabels } from '../shared/generation-models.mjs';
+import { PROVIDERS, effortLabel, joinModelValue, menuModels, providerLabels, splitModelValue } from '../shared/generation-models.mjs';
 import { api } from './api.js';
-import { durationLabel, localDateTime, modelLabel } from './settings-format.js';
+import { durationLabel, localDateTime, menuModelLabel, modelLabel } from './settings-format.js';
 import { escape } from './specimen-format.js';
 
 const REFRESH_INTERVAL_MS = 2000;
 const REFRESH_LIMIT_MS = 30_000;
 const modelsUrl = '/api/models';
-const providerState = state => state.catalog?.providers.find(item => item.provider === state.draft.provider);
-const selectedModel = state => providerState(state)?.models.find(item => item.id === state.draft.model);
-const option = (value, label, selected) => `<option value="${escape(value)}"${selected ? ' selected' : ''}>${escape(label)}</option>`;
+const selectedModel = state => state.catalog?.providers.find(item => item.provider === state.draft.provider && item.available)
+  ?.models.find(item => item.id === state.draft.model);
+const option = (value, label, selected, disabled = false) => `<option value="${escape(value)}"${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}>${escape(label)}</option>`;
+
+// The menu shows each provider's first six models plus the saved one; every choice must come from that list.
+const visibleModels = (state, provider) => menuModels(provider.models, state.selection?.provider === provider.provider ? state.selection.model : null);
 
 function chooseModel(state) {
-  const models = providerState(state)?.models ?? [];
-  const model = models.find(item => item.id === state.draft.model) ?? models.find(item => item.isDefault) ?? models[0];
-  if (!model) return;
+  let model = selectedModel(state);
+  if (!model) {
+    const provider = Object.values(PROVIDERS).map(id => state.catalog?.providers.find(item => item.provider === id))
+      .find(item => item?.available && item.models.length);
+    if (!provider) return;
+    state.draft.provider = provider.provider;
+    const visible = visibleModels(state, provider);
+    model = visible.find(item => item.isDefault) ?? visible[0];
+  }
   state.draft.model = model.id;
   state.draft.effort = model.efforts.includes(state.draft.effort) ? state.draft.effort : model.defaultEffort ?? model.efforts[0] ?? null;
 }
 
+function modelGroups(state) {
+  const selectedValue = joinModelValue(state.draft.provider, state.draft.model);
+  return Object.values(PROVIDERS).map(id => {
+    const provider = state.catalog.providers.find(item => item.provider === id);
+    const models = provider?.available ? visibleModels(state, provider) : [];
+    const options = models.length ? models.map(model => {
+      const value = joinModelValue(id, model.id);
+      return option(value, menuModelLabel(id, model), value === selectedValue);
+    }).join('') : option('', provider?.reason || 'No models available', false, true);
+    return `<optgroup label="${escape(providerLabels[id])}">${options}</optgroup>`;
+  }).join('');
+}
+
 function generationCard(state) {
-  const provider = providerState(state), model = selectedModel(state);
-  const models = provider?.available ? provider.models : [];
-  const efforts = model?.efforts ?? [];
+  const efforts = selectedModel(state)?.efforts ?? [];
+  const hasModels = state.catalog.providers.some(provider => provider.available && provider.models.length);
   const busy = state.loading || state.refreshing || state.saving;
   const reasons = (state.catalog?.providers ?? []).filter(item => !item.available)
     .map(item => `<p class="settings-note settings-reason">${escape(providerLabels[item.provider])}: ${escape(item.reason || 'Unavailable.')}</p>`).join('');
   return `<article class="card settings-card">
     <h2>Generation model</h2>
     <form id="settings-form" class="settings-form">
-      <label for="settings-provider">Provider<select id="settings-provider"${busy ? ' disabled' : ''}>
-        ${Object.values(PROVIDERS).map(id => option(id, providerLabels[id], id === state.draft.provider)).join('')}
+      <label for="settings-model">Model<select id="settings-model"${busy || !hasModels ? ' disabled' : ''}>
+        ${modelGroups(state)}
       </select></label><div id="settings-reasons">${reasons}</div>
-      <label for="settings-model">Model<select id="settings-model"${busy || !models.length ? ' disabled' : ''}>
-        ${models.length ? models.map(item => option(item.id, `${item.label} · ${item.id}${item.isDefault ? ' (default)' : ''}`, item.id === state.draft.model)).join('') : option('', 'No models available', true)}
-      </select></label>
       <label for="settings-effort"${efforts.length ? '' : ' hidden'}>Effort<select id="settings-effort"${busy || !efforts.length ? ' disabled' : ''}>
         ${efforts.map(effort => option(effort, effortLabel(effort), effort === state.draft.effort)).join('')}
       </select></label>
@@ -120,15 +138,16 @@ export function mountSettingsPage(byId, { onError }) {
       const { provider, model, effort } = state.draft;
       const result = await api('/api/settings/generation', { method: 'PUT', body: JSON.stringify({ provider, model, effort: selectedModel(state)?.efforts.length ? effort : null }) });
       state.selection = result.selection; state.draft = { ...result.selection };
-      state.saved = `Saved · uses ${result.selection.model} at ${effortLabel(result.selection.effort)} for new jobs`;
+      state.saved = `Saved · uses ${modelLabel(result.selection)} for new jobs`;
     } catch (error) { fail(error); }
     finally { state.saving = false; update(); }
   }
   section.onsubmit = save;
   section.onchange = event => {
-    const field = { 'settings-provider': 'provider', 'settings-model': 'model', 'settings-effort': 'effort' }[event.target.id];
-    if (!field) return;
-    state.draft[field] = event.target.value; state.saved = ''; chooseModel(state); update();
+    if (event.target.id === 'settings-model') Object.assign(state.draft, splitModelValue(event.target.value));
+    else if (event.target.id === 'settings-effort') state.draft.effort = event.target.value;
+    else return;
+    state.saved = ''; chooseModel(state); update();
   };
   section.onclick = event => { if (event.target.closest('#settings-refresh')) void refresh(); };
   return { show };
