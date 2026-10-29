@@ -1,26 +1,25 @@
 import { sliders } from '../shared/sliders.mjs';
-import { generationDirectionsMarkup } from './generation-directions.js';
+import { generationDirectionsMarkup, MAX_ANIMAL_INSPIRATIONS } from './generation-directions.js';
 import { animalTypes } from '../shared/animal-types.mjs';
 import { icon } from './icons.js';
 import { escape } from './specimen-format.js';
 
-function slider({ id, name, initial: value, low, high, hint }) {
-  return `<div class="slider-control ${id}"><div class="slider-label"><label for="${id}">${name}</label><output id="${id}-value" for="${id}">${value}<small>/100</small></output></div><input id="${id}" type="range" min="0" max="100" value="${value}" aria-describedby="${id}-hint" style="--value:${value}%"/><div class="range-labels"><span>${low}</span><span>${high}</span></div><p id="${id}-hint" class="slider-hint">${hint}</p></div>`;
+function slider({ id, name, initial: value, low, high }) {
+  return `<div class="slider-control ${id}"><div class="slider-label"><label for="${id}">${name}</label><output id="${id}-value" for="${id}">${value}<small>/100</small></output></div><input id="${id}" type="range" min="0" max="100" value="${value}" style="--value:${value}%"/><div class="range-labels"><span>${low}</span><span>${high}</span></div></div>`;
 }
 
 function animalChoices() {
-  return `<fieldset class="animal-choices"><legend>Animal inspiration <span class="info-hint" tabindex="0" role="img" aria-label="Choose an inspiration pool. Surprise me draws one to three groups; direction controls can keep an exact selection. Follow my description gives your text priority." title="Choose an inspiration pool. Surprise me draws one to three groups; direction controls can keep an exact selection. Follow my description gives your text priority.">?</span></legend>
+  return `<details class="inspiration-details"><summary title="Choose up to ${MAX_ANIMAL_INSPIRATIONS} animal groups to use together.">Animal inspiration <span class="optional-tag">OPTIONAL · MAX ${MAX_ANIMAL_INSPIRATIONS}</span></summary>
     <div class="animal-chips"><button id="any-animal" class="animal-chip" type="button" aria-pressed="true">Any animal</button>${animalTypes.map(type => `<button class="animal-chip${type.fictional ? ' fictional-animal' : ''}" type="button" data-animal-type="${type.id}" aria-pressed="false" title="${escape(type.fictional ? `Fictional inspiration: ${type.traits}` : type.traits)}">${escape(type.label)}${type.fictional ? '<span aria-label="fictional">✦</span>' : ''}</button>`).join('')}</div>
-    <label class="feature-control" for="legless"><input id="legless" type="checkbox"/> No legs <span class="info-hint" title="Require a legless lifeform. Fins, wings, tentacles and other forms of movement can still occur.">?</span></label>
-  </fieldset>`;
+  </details>`;
 }
 
 export function renderStudio(root) {
   root.innerHTML = `
   <header class="topbar">
     <a href="#" class="brand" aria-label="Critter Generator home"><span class="brand-mark">${icon('leaf',25)}</span><span>CRITTER<span class="brand-bottom">GENERATOR</span></span></a>
-    <nav aria-label="Main navigation"><button class="nav active" data-page="lab">The laboratory</button><button class="nav" data-page="collection">Collection <span id="count">0</span></button></nav>
-    <button id="connection" class="connection" title="Check the Codex connection"><i></i><span>Connecting to Codex</span>${icon('reset',14)}</button>
+    <nav aria-label="Main navigation"><button class="nav active" data-page="lab">The laboratory</button><button class="nav" data-page="collection">Collection <span id="count">0</span></button><button class="nav" data-page="settings" id="settings-nav" hidden>Settings</button></nav>
+    <div class="topbar-tools"><button id="connection" class="connection" title="Check the Codex connection"><i></i><span>Connecting to Codex</span>${icon('reset',14)}</button><button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to light theme" title="Switch to light theme">${icon('sun',16)}</button></div>
   </header>
   <main>
     <h1 class="page-title">Critter Generator</h1>
@@ -28,13 +27,12 @@ export function renderStudio(root) {
       <aside class="controls card">
         <div class="section-heading"><h2>New lifeform</h2>${icon('sparkle')}</div>
         <form id="generator-form">
-          ${animalChoices()}
-          <label class="input-label" for="prompt">Describe an idea <span>OPTIONAL</span></label>
+          <label class="input-label" for="prompt">Describe an idea <span class="optional-tag">OPTIONAL</span></label>
           <textarea id="prompt" maxlength="1000" rows="3" placeholder="A translucent reef hunter that grows false eyes to lure its prey…"></textarea>
           <div class="sliders">
             ${sliders.map(slider).join('')}
           </div>
-          ${generationDirectionsMarkup()}
+          ${generationDirectionsMarkup(animalChoices())}
           <button id="generate" class="button primary" type="submit" title="Generate field notes and a portrait. Request CAD after the portrait is ready.">${icon('sparkle')} Generate lifeform ${icon('arrow')}</button>
           <p id="generation-estimate" class="generation-note"></p>
         </form>
@@ -55,6 +53,6 @@ export function renderStudio(root) {
       <aside id="field-notes" class="field-notes card" aria-label="Specimen field notes"><div class="loading-visual"><span class="spinner"></span></div></aside>
     </section>
     <section id="collection" class="hidden"><div class="collection-heading"><h2>Collection</h2></div><div id="collection-grid" class="collection-grid"></div></section>
-    <footer><span>${icon('leaf',14)} FICTIONAL SPECIES</span></footer>
+    <section id="settings" class="hidden"></section>
   </main><div id="toast" class="toast hidden" role="alert"></div>`;
 }

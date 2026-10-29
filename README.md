@@ -50,26 +50,31 @@ available and otherwise the account's returned default. No global Codex configur
 
 ## Use
 
-1. Describe the lifeform or start from a preset. Choose **Surprise me** for speculative invention or
-   **Follow my description** to preserve the requested organism without unrelated sampled lineages.
-2. Leave **Any animal** selected or choose animal inspiration groups. Normal discovery draws one to
-   three groups. The inspiration lock uses every selected group and accepts one to three selections.
-   **No legs** requires a legless animal; fins, wings and tentacles remain possible.
+The interface starts dark regardless of system appearance. The sun/moon button in the top bar
+switches themes and remembers the choice when browser storage is available.
+
+1. Describe the lifeform or start from a preset. A nonempty description is followed directly; leave it
+   blank for speculative invention. Presets fill the description and personality sliders.
+2. Open **Requirements & direction controls**, then **Animal inspiration**, to optionally choose up to
+   three groups. Every selected group is used together. **Any animal** clears the selection and
+   restores automatic sampling.
 3. Adjust **Absurdity**, **Sexual deviancy**, **Femme**, **Psychedelic**, and **Lethality**. The reproductive
    setting is clinical zoological biology; Femme means ornament and poise, never sexualization.
 4. Choose a wildlife encounter, full-body reference, or transparent cutout and an aspect ratio.
-   Optional required/excluded feature lists carry exact visual constraints through both stages.
-   Preview the sampled directions, or lock the camera, encounter and silhouette. Changing settings
-   clears the preview; submitting an unchanged preview uses that exact plan.
+   Optional **Must include** and **Must exclude** lists carry visual constraints through both stages.
+   Optionally lock the camera, activity and body outline. **Preview directions** shows the sampled
+   plan; **New directions** resamples while preserving explicit choices. Changing settings clears the
+   preview; submitting an unchanged preview uses that exact plan.
 5. Click **Generate lifeform**. Codex writes the organism and field notes, then generates its portrait.
    This step never creates CAD, including when an older client sends `printModel: true`.
-   The loader estimates time from the latest ten successful complete discoveries, with a 130-second
-   initial fallback. Its percentage is an elapsed-time estimate, not measured model completion.
+   The loader estimates time from the latest five successful complete discoveries, excluding runs
+   longer than six minutes, with a 130-second initial fallback. Its percentage is an elapsed-time estimate, not measured model completion.
 6. Use **Another portrait** for a new image of the same species, or **Edit this portrait** for a targeted
    change using the current image as reference. Earlier versions remain downloadable. Accepted visual
    edits take precedence over original appearance text in later portraits; the biological record stays
-   intact. Optional advisory review reports satisfied, uncertain or conflicting requirements, including
-   uncertainty when anatomy is hidden. It does not automatically reject an image or certify correctness.
+   intact. The server's advisory review (satisfied, uncertain or conflicting requirements, with hidden
+   anatomy reported as uncertain) is no longer requested by the form; it never rejects an image or
+   certifies correctness.
 7. After an image exists, use **Generate CAD** and choose height (60–500 mm) and a baseplate. The server
    plans a simplified sculpture from the current portrait. Download STL/OpenSCAD and inspect the exact
    geometry in the 3D tab. A successful new portrait or edit marks existing CAD **Out of date**; its
@@ -88,12 +93,24 @@ The 16 real animal groups and two fictional bonuses are cataloged in
 [Animal inspiration groups](docs/animal-inspiration.md). Wildlife mode uses field observations,
 food, threats and habitat as visible scene evidence, with varied cameras and foreground occlusion.
 Reference and cutout modes replace that scene requirement with an unobscured subject. Explicit visual
-requirements outrank sampled directions. Image models can still miss details; use review and targeted
-edits when exact appearance matters.
+requirements outrank sampled directions. Image models can still miss details; inspect portraits and use
+targeted edits when exact appearance matters.
 
 The saved `variation` contains the complete versioned plan and seed. A seed alone does not recreate a
 production request because recent collection history influences sampling; the trace retains the frozen
 plan and actual prompts. CAD proportions never constrain the initial biological design or portrait.
+
+### Settings
+
+The owner-only **Settings** page (the Settings tab appears for the owner; localhost is always the
+owner) selects the provider, model and supported reasoning effort for new jobs. The default is
+Codex / GPT-6 Astra / Maximum. Save applies the selection to the next job; portraits always use
+Codex image generation. Refresh models rediscovers the models available to the host's signed-in
+subscription accounts (cached for 15 minutes) and shows any provider availability problem. An
+unavailable account or model fails a job with a clear message rather than silently switching.
+
+Generation stats show the timing estimate and excluded outliers, job totals by kind and status,
+completed-job durations, the ten newest jobs and results grouped by model.
 
 ## Local database and files
 
@@ -153,6 +170,11 @@ The server still binds only `127.0.0.1`. To serve it through a Cloudflare Tunnel
 - `ACCESS_TEAM_DOMAIN`: e.g. `<team>.cloudflareaccess.com`
 - `ACCESS_AUD`: the audience tag of the Access application that guards `/auth/email`
 - `CRITTER_PASSCODE` (optional): a shared passcode that also signs visitors in
+- `CRITTER_OWNER_EMAIL` (optional): the Access email whose `/auth/email` sign-in unlocks the
+  owner-only Settings page (model/effort selection and generation stats). Matching ignores case and
+  surrounding whitespace; passcode sign-ins and other emails stay ordinary sessions. Existing
+  sessions are not upgraded: sign in again through `/auth/email` after configuring it. Localhost
+  is always the owner.
 - `CRITTER_DATA_DIR` (optional): data directory instead of `.local/`
 
 Requests for the public host need a session cookie, which `/auth` issues in one of two ways:

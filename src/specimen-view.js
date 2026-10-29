@@ -42,7 +42,7 @@ function renderPendingView(byId) {
 function renderFieldNotes(byId, specimen, activeJob, onPortrait, onReuse) {
   byId('field-notes').innerHTML = `<div class="notes-heading"><span class="eyebrow">${specimen.demo ? 'EXAMPLE FIELD NOTES' : 'FIELD NOTES'}</span>${icon('book',19)}</div>
     <h2>${escape(specimen.englishName)}</h2><p class="latin">${escape(specimen.latinName)}</p><p class="epithet">${escape(specimen.epithet)}</p>
-    <div class="trait-chips">${usedSliders(specimen.settings).map(({ id, short }) => `<span class="chip-${id}">${short} ${specimen.settings[id]}</span>`).join('')}<span>FICTIONAL SPECIES</span></div>
+    <div class="trait-chips">${usedSliders(specimen.settings).map(({ id, short }) => `<span class="chip-${id}">${short} ${specimen.settings[id]}</span>`).join('')}</div>
     <p class="description">${escape(specimen.description)}</p>
     ${physicalNotes(specimen.biology)}
     ${note('Environment',specimen.habitat)}${note('Diet',specimen.diet)}${note('Courtship & biology',specimen.courtship)}${note('Threat assessment',specimen.danger)}

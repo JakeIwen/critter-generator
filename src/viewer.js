@@ -4,7 +4,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 export function mountViewer(element, mesh, height) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setClearColor('#202820', 1);
+  const artworkBackground = getComputedStyle(document.documentElement).getPropertyValue('--art-bg').trim();
+  renderer.setClearColor(artworkBackground, 1);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -13,7 +14,7 @@ export function mountViewer(element, mesh, height) {
   renderer.domElement.setAttribute('aria-label', 'Rotatable 3D preview of the exported printable sculpture. Drag to rotate; scroll to zoom.');
   renderer.domElement.setAttribute('role', 'img');
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog('#202820', height * 4, height * 9);
+  scene.fog = new THREE.Fog(artworkBackground, height * 4, height * 9);
   const camera = new THREE.PerspectiveCamera(34, 1, .1, height * 15);
   camera.up.set(0, 0, 1);
   camera.position.set(height * 1.8, -height * 2.65, height * 1.65);
@@ -40,7 +41,7 @@ export function mountViewer(element, mesh, height) {
   const material = new THREE.MeshStandardMaterial({ color: '#bfbd96', roughness: .65, metalness: .13 });
   const sculpt = new THREE.Mesh(geometry, material); sculpt.castShadow = true; sculpt.receiveShadow = true; scene.add(sculpt);
   const groundGeometry = new THREE.PlaneGeometry(height * 30, height * 30);
-  const groundMaterial = new THREE.MeshStandardMaterial({ color: '#242c23', roughness: 1 });
+  const groundMaterial = new THREE.MeshStandardMaterial({ color: artworkBackground, roughness: 1 });
   const ground = new THREE.Mesh(groundGeometry, groundMaterial); ground.position.z = -.1; ground.receiveShadow = true; scene.add(ground);
   const grid = new THREE.GridHelper(height * 6, 30, '#627052', '#3b4737');
   grid.rotation.x = Math.PI / 2; grid.position.z = -.05; grid.material.transparent = true; grid.material.opacity = .26; scene.add(grid);

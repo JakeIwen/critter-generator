@@ -4,6 +4,7 @@ import { renderCollection } from './collection.js';
 import { mountConnection } from './connection.js';
 import { mountGenerationForm } from './generation-form.js';
 import { createJobController } from './generation-jobs.js';
+import { mountSettingsPage } from './settings-page.js';
 import { createSpecimenView } from './specimen-view.js';
 import { renderStudio } from './template.js';
 
@@ -15,11 +16,14 @@ export function mountStudio() {
     byId('toast').textContent = message; byId('toast').classList.remove('hidden');
     clearTimeout(toast.timer); toast.timer = setTimeout(() => byId('toast').classList.add('hidden'), 9000);
   };
+  const settingsPage = mountSettingsPage(byId, { onError: toast });
   const setPage = page => {
     byId('laboratory').classList.toggle('hidden', page !== 'lab');
     byId('collection').classList.toggle('hidden', page !== 'collection');
+    byId('settings').classList.toggle('hidden', page !== 'settings');
     document.querySelectorAll('[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
     if (page === 'collection') renderCollection(byId, specimens, selectFromCollection);
+    if (page === 'settings') void settingsPage.show();
   };
   const form = mountGenerationForm(byId, settings => jobs.launch('/api/generate', settings), toast);
   const specimenView = createSpecimenView(byId, {

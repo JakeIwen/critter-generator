@@ -2,6 +2,7 @@ import { JOB_KINDS } from '../shared/generation-timing.mjs';
 import { api } from './api.js';
 import { createGenerationProgress } from './generation-progress.js';
 const runningStatuses = ['queued', 'running'];
+const connectingMessage = 'Connecting to the model…';
 const stageTitles = { design:'Discovering a new species', 'cad-design':'Interpreting the portrait for CAD', model:'Building the print sculpture', image:'Drawing the portrait', review:'Reviewing the portrait', done:'Specimen updated' };
 
 function showJobProgress(byId, progress, job) {
@@ -58,8 +59,8 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
       activeJob = result.jobId; sessionStorage.setItem('critter-job', activeJob);
       showJobProgress(byId, progress, { id: activeJob, kind, createdAt: result.createdAt, estimatedDurationMs: result.estimatedDurationMs });
       byId('status-title').textContent = stageTitles[kind === JOB_KINDS.CAD ? 'cad-design' : kind === JOB_KINDS.PORTRAIT ? 'image' : 'design'];
-      byId('status-message').textContent = 'Connecting to Codex…';
-      if (url === '/api/generate') onLaunchPending({ stage: 'design', message: 'Connecting to Codex…' }, stageTitles.design);
+      byId('status-message').textContent = connectingMessage;
+      if (url === '/api/generate') onLaunchPending({ stage: 'design', message: connectingMessage }, stageTitles.design);
       void poll();
     } catch (error) { onError(error.message); onBusy(false); }
   }
