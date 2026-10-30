@@ -4,6 +4,7 @@ import { sculptValidation, SCULPT_LIMITS, SCULPT_GROUND } from '../shared/sculpt
 import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
 import { portraitVersionOf } from '../shared/specimen-assets.mjs';
+import { reviewCad } from './cad-review.mjs';
 import { buildCadCandidate } from './cad-candidate.mjs';
 
 export const CadRequest = z.object({
@@ -39,8 +40,10 @@ export async function generateCad({ specimen, request, store, providers, trace, 
   const sourcePortraitVersion = portraitVersionOf(specimen);
   const validation = sculptValidation(specimen.biology?.legCount === 0 || specimen.settings?.legless);
   update({ stage: GENERATION_STAGES.CAD_DESIGN, message: 'Planning a sculpture from the current portrait…' });
-  const candidate = await buildCadCandidate({ prompt: cadDesignPrompt(specimen), imagePaths: [store.portraitFile(specimen)],
-    validation, repairAttempts: settings.cadRepairAttempts, request, store, providers, trace, signal, update });
+  const context = { prompt: cadDesignPrompt(specimen), imagePaths: [store.portraitFile(specimen)],
+    validation, repairAttempts: settings.cadRepairAttempts, rounds: settings.cadReviewRounds, request, store, providers, trace, signal, update };
+  const initial = await buildCadCandidate(context);
+  const candidate = await reviewCad(initial, context);
   signal.throwIfAborted();
   const print = await trace.operation('cad-publish', { sourcePortraitVersion }, () => store.model(specimen.id,
     candidate.sculpt, request.height, request.baseplate, { sourcePortraitVersion, result: candidate.result }));

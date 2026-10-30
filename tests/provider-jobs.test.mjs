@@ -61,8 +61,9 @@ test('Claude-selected jobs snapshot settings, route text/reviews/CAD to Claude a
   const cad = jobs.start({ settings, existing, kind: 'cad', cadRequest: { height: 100, baseplate: false } });
   await jobs.current?.promise;
   assert.equal(store.get('jobs', cad.jobId).status, 'completed', store.get('jobs', cad.jobId).message);
-  const cadStep = readTrace(store, cad.jobId).steps.find(step => step.stage === 'cad-design');
-  assert.equal(cadStep.provider, 'claude'); assert.equal(cadStep.reasoningEffort, 'max');
+  const cadSteps = readTrace(store, cad.jobId).steps.filter(step => step.stage === 'cad-design');
+  assert.equal(cadSteps.length, 2, 'Default CAD includes the initial plan and one render/revise round');
+  for (const step of cadSteps) { assert.equal(step.provider, 'claude'); assert.equal(step.reasoningEffort, 'max'); }
 });
 
 test('Codex selection controls both text and image model/effort rather than adapter defaults', async t => {
