@@ -394,7 +394,7 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 
 .topbar-tools{display:flex;align-items:center;gap:14px}
 .theme-switch{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--border);border-radius:999px;background:var(--subtle);flex-shrink:0}
-.theme-switch button{display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;min-width:44px;min-height:44px;border-radius:999px;font-size:0.6875rem;color:var(--muted)}
+.theme-switch button{display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;min-height:32px;border-radius:999px;font-size:0.6875rem;color:var(--muted)}
 .theme-switch button[aria-checked="true"]{background:var(--accent-light);color:var(--text)}
 .theme-switch button:not([aria-checked="true"]):hover{color:var(--accent)}
 .theme-switch button:focus-visible{outline-offset:2px}
@@ -423,6 +423,7 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
   .height-control input{min-height:var(--control-height)}
   .generation-options{gap:8px;margin:12px 0}
   .option-pair{grid-template-columns:minmax(0,1fr) minmax(0,.6fr)}
+  .theme-switch button{min-width:44px;min-height:44px}
   .direction-fields{gap:8px;padding-top:8px}
   .direction-details{padding-top:8px}
   summary{min-height:var(--control-height);align-content:center}
