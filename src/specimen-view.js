@@ -71,6 +71,11 @@ function renderPortrait(byId, specimen, { busy, onPortrait, isCurrent }) {
   byId('view-caption').textContent = 'PORTRAIT NOT YET GENERATED';
 }
 
+// The CAD card sits below the stage on phones, so bring the 3D tab into view as well as selecting it.
+function openModelView(byId, showView) {
+  void showView('model'); byId('model-tab').scrollIntoView({ block: 'center', behavior: 'smooth' }); byId('model-tab').focus({ preventScroll: true });
+}
+
 export function createSpecimenView(byId, { onPortrait, onCad, onCancel, onReuse, onError }) {
   let activeJob = false;
   let selected = null;
@@ -120,9 +125,7 @@ export function createSpecimenView(byId, { onPortrait, onCad, onCancel, onReuse,
     byId('specimen-tag').textContent = specimen.demo ? 'EXAMPLE / SPECIMEN' : `SPECIMEN / ${String(specimens.filter(item => !item.demo).length - specimens.findIndex(item => item.id === specimen.id)).padStart(3,'0')}`;
     setPrintActions(byId, specimen);
     renderFieldNotes(byId, specimen, activeJob, onPortrait, onReuse);
-    renderSpecimenActions(byId, specimen, { busy: activeJob, onPortrait, onCad, onViewModel() {
-      void showView('model'); byId('model-tab').scrollIntoView({ block: 'center', behavior: 'smooth' }); byId('model-tab').focus({ preventScroll: true });
-    } });
+    renderSpecimenActions(byId, specimen, { busy: activeJob, onPortrait, onCad, onViewModel: () => openModelView(byId, showView) });
     updateActionProgress();
     await showView(!specimen.image && hasPrintModel(specimen) ? 'model' : tab);
   }
