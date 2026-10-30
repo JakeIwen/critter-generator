@@ -63,9 +63,46 @@ test('failed jobs reset in-card feedback and hand the terminal result to the exi
   assert.equal(v.completed[0].status, 'failed'); assert.equal(v.busy.at(-1), false); assert.equal(v.jobs.at(-1)[0], null);
 });
 
-test('portrait jobs retain the top status box and their existing stage feedback', async t => {
+test('portrait jobs hide the top status box and retain their stage feedback', async t => {
   const v = browser(t, JOB_KINDS.PORTRAIT); v.controller.resume('job'); await flush();
-  assert.equal(v.nodes['status-box'].classes.has('hidden'), false);
+  assert.equal(v.nodes['status-box'].classes.has('hidden'), true);
   await v.poll('running', 'image'); assert.equal(v.nodes['status-title'].textContent, 'Drawing the portrait');
+  await v.poll('completed', 'done'); assert.equal(v.nodes['status-box'].classes.has('hidden'), true);
+});
+
+test('portrait submission immediately identifies its specimen and edit control, then clears saved context', async t => {
+  const v = browser(t, JOB_KINDS.PORTRAIT);
+  const launch = v.controller.launch('/api/specimens/example/portrait', { instructions: 'Orange fur' }, JOB_KINDS.PORTRAIT, 'example', 'apply-portrait-edit');
+  assert.equal(v.jobs.at(-1)[0].specimenId, 'example');
+  assert.equal(v.jobs.at(-1)[0].actionButtonId, 'apply-portrait-edit');
+  assert.match(v.jobs.at(-1)[0].message, /Connecting/);
+  assert.equal(v.nodes['status-box'].classes.has('hidden'), true);
+  v.accept(); await launch; await flush();
+  assert.equal(v.jobs.at(-1)[0].actionButtonId, 'apply-portrait-edit');
+  assert.equal(v.storage.get('critter-job-action'), 'apply-portrait-edit');
+  await v.poll('completed', 'done');
+  assert.equal(v.storage.has('critter-job-action'), false); assert.deepEqual(v.errors, []);
+});
+
+test('reloaded portrait edits recover their action and share cancellation', async t => {
+  const v = browser(t, JOB_KINDS.PORTRAIT);
+  v.storage.set('critter-job', 'job'); v.storage.set('critter-job-action', 'apply-portrait-edit');
+  v.controller.resume('job'); await flush();
+  assert.equal(v.jobs.at(-1)[0].actionButtonId, 'apply-portrait-edit');
+  assert.equal(v.nodes['status-box'].classes.has('hidden'), true);
+  await v.controller.cancel(); assert.equal(v.jobs.at(-1)[0].cancelling, true);
+  await v.poll(); assert.equal(v.completed[0].status, 'cancelled'); assert.equal(v.jobs.at(-1)[0], null);
+  assert.equal(v.storage.has('critter-job-action'), false);
+});
+
+test('portrait failure restores controls through the existing terminal result path', async t => {
+  const v = browser(t, JOB_KINDS.PORTRAIT); v.controller.resume('job'); await flush(); await v.poll('failed', 'image');
+  assert.equal(v.completed[0].status, 'failed'); assert.equal(v.busy.at(-1), false); assert.equal(v.jobs.at(-1)[0], null);
+  assert.equal(v.nodes['status-box'].classes.has('hidden'), true);
+});
+
+test('full discoveries keep their form-adjacent status box', async t => {
+  const v = browser(t, JOB_KINDS.GENERATION); v.controller.resume('job'); await flush();
+  assert.equal(v.nodes['status-box'].classes.has('hidden'), false);
   await v.poll('completed', 'done'); assert.equal(v.nodes['status-box'].classes.has('hidden'), true);
 });

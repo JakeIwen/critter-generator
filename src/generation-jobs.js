@@ -2,15 +2,13 @@ import { JOB_KINDS } from '../shared/generation-timing.mjs';
 import { api } from './api.js';
 import { createGenerationProgress } from './generation-progress.js';
 const runningStatuses = ['queued', 'running'];
+const inCardJobKinds = new Set([JOB_KINDS.CAD, JOB_KINDS.PORTRAIT]);
 const connectingMessage = 'Connecting to the model…';
 const stageTitles = { design:'Discovering a new species', 'cad-design':'Interpreting the portrait for CAD', model:'Building the print sculpture', image:'Drawing the portrait', review:'Reviewing the portrait', done:'Specimen updated' };
 
 function showJobProgress(byId, progress, job) {
-  if (job.kind === JOB_KINDS.CAD) {
-    progress.stop(); byId('status-progress').removeAttribute('value');
-    byId('status-progress').setAttribute('aria-valuetext', 'CAD generation in progress');
-    byId('status-estimate').textContent = 'Creating a printable approximation of the current portrait.';
-  } else progress.start(job.id, job.createdAt, job.estimatedDurationMs);
+  if (inCardJobKinds.has(job.kind)) progress.stop();
+  else progress.start(job.id, job.createdAt, job.estimatedDurationMs);
 }
 
 function refreshTiming(progress) {
@@ -24,19 +22,20 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
   let polling = false;
   let cancellingJob = null;
   let currentJob = null;
+  let actionButtonId = null;
   const progress = createGenerationProgress(byId);
   function updateJob(job) {
     currentJob = job;
     const title = stageTitles[job.stage] || 'Working on your specimen';
-    onJob(job, title);
-    // CAD feedback stays at its action card instead of competing with an off-screen status box.
-    byId('status-box').classList.toggle('hidden', job.kind === JOB_KINDS.CAD);
+    onJob({ ...job, actionButtonId }, title);
+    // Action feedback stays beside its control instead of competing with an off-screen status box.
+    byId('status-box').classList.toggle('hidden', inCardJobKinds.has(job.kind));
     byId('status-message').textContent = job.message; byId('status-title').textContent = title;
   }
   async function poll() {
     if (polling || !activeJob) return;
     polling = true; onBusy(true);
-    if (currentJob?.kind !== JOB_KINDS.CAD) byId('status-box').classList.remove('hidden');
+    if (!inCardJobKinds.has(currentJob?.kind)) byId('status-box').classList.remove('hidden');
     try {
       while (activeJob) {
         const job = await api(`/api/jobs/${activeJob}`);
@@ -46,7 +45,7 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
         if (job.specimenId) await onSpecimen(job.specimenId);
         if (!runningStatuses.includes(job.status)) {
           progress.stop(true); cancellingJob = null; currentJob = null; onJob(null);
-          activeJob = null; sessionStorage.removeItem('critter-job');
+          activeJob = null; actionButtonId = null; sessionStorage.removeItem('critter-job'); sessionStorage.removeItem('critter-job-action');
           byId('status-box').classList.add('hidden'); onBusy(false);
           refreshTiming(progress);
           await onComplete(job); break;
@@ -59,14 +58,15 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
       onError(`Connection interrupted: ${error.message}. Reload to reconnect to the generation.`); onBusy(false);
     } finally { polling = false; }
   }
-  async function launch(url, body, kind = JOB_KINDS.GENERATION, specimenId = null) {
+  async function launch(url, body, kind = JOB_KINDS.GENERATION, specimenId = null, buttonId = null) {
     if (activeJob) return onError('A specimen update is already in progress.');
-    onBusy(true);
+    onBusy(true); actionButtonId = buttonId;
     const stage = kind === JOB_KINDS.CAD ? 'cad-design' : kind === JOB_KINDS.PORTRAIT ? 'image' : 'design';
-    if (kind === JOB_KINDS.CAD) updateJob({ kind, specimenId, stage, message: connectingMessage, createdAt: new Date().toISOString() });
+    if (inCardJobKinds.has(kind)) updateJob({ kind, specimenId, stage, message: connectingMessage, createdAt: new Date().toISOString() });
     try {
       const result = await api(url, { method: 'POST', body: JSON.stringify(body) });
       activeJob = result.jobId; sessionStorage.setItem('critter-job', activeJob);
+      if (actionButtonId) sessionStorage.setItem('critter-job-action', actionButtonId); else sessionStorage.removeItem('critter-job-action');
       showJobProgress(byId, progress, { id: activeJob, kind, createdAt: result.createdAt, estimatedDurationMs: result.estimatedDurationMs });
       updateJob({ id: activeJob, kind, specimenId, stage, message: connectingMessage, createdAt: result.createdAt });
       if (url === '/api/generate') onLaunchPending({ stage: 'design', message: connectingMessage }, stageTitles.design);
@@ -88,6 +88,9 @@ export function createJobController(byId, { onBusy, onLaunchPending, onPending, 
   };
   byId('cancel').onclick = cancel;
   return { launch, cancel, setTiming: progress.setTiming, resume(jobId) {
-    if (jobId && (!activeJob || activeJob === jobId) && !polling) { activeJob = jobId; void poll(); }
+    if (jobId && (!activeJob || activeJob === jobId) && !polling) {
+      actionButtonId = sessionStorage.getItem('critter-job') === jobId ? sessionStorage.getItem('critter-job-action') : null;
+      activeJob = jobId; void poll();
+    }
   } };
 }
