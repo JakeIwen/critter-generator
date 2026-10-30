@@ -3,6 +3,7 @@ import { portraitVersionOf, cadIsStale, PORTRAIT_KINDS } from '../shared/specime
 import { REVIEW_STATUS, REVIEW_FINDINGS } from '../shared/review-status.mjs';
 import { escape, hasPrintModel } from './specimen-format.js';
 import { icon } from './icons.js';
+import { actionProgressMarkup } from './action-progress.js';
 
 export function portraitVersionsFor(specimen) {
   if (!specimen.image) return [];
@@ -33,10 +34,12 @@ function cadControls(specimen) {
     ${specimen.cadError ? `<p class="inline-error">CAD incomplete: ${escape(specimen.cadError)}</p>` : ''}
     ${specimen.print?.approximationNotes?.length ? `<details><summary>CAD approximations</summary><ul>${specimen.print.approximationNotes.map(note => `<li>${escape(note)}</li>`).join('')}</ul></details>` : ''}
     <form id="cad-form"><div class="height-control"><label for="cad-height">Print height</label><div><input id="cad-height" type="number" value="${escape(height)}" min="${PRINT_HEIGHT.min}" max="${PRINT_HEIGHT.max}" step="1" required data-specimen-action/><span>mm</span></div></div><label class="baseplate-control" for="cad-baseplate"><input id="cad-baseplate" type="checkbox"${baseplate ? ' checked' : ''} data-specimen-action/> Include baseplate</label><button id="generate-cad" class="button ${stale ? 'primary' : 'secondary'}" type="submit" data-specimen-action>${icon('cube',14)} ${available ? 'Regenerate CAD' : 'Generate CAD'}</button></form>
+    ${actionProgressMarkup('cad', 'CAD generation progress')}
+    ${available ? `<button id="view-cad" class="button secondary view-cad" type="button">${icon('cube',14)} View 3D model</button>` : ''}
   </section>`;
 }
 
-export function renderSpecimenActions(byId, specimen, { busy, onPortrait, onCad }) {
+export function renderSpecimenActions(byId, specimen, { busy, onPortrait, onCad, onViewModel }) {
   byId('specimen-actions').innerHTML = portraitControls(specimen) + cadControls(specimen);
   byId('specimen-actions').classList.toggle('hidden', !specimen.image);
   if (byId('regenerate-portrait')) byId('regenerate-portrait').onclick = () => onPortrait(specimen, {});
@@ -48,6 +51,7 @@ export function renderSpecimenActions(byId, specimen, { busy, onPortrait, onCad 
     event.preventDefault();
     onCad(specimen, { height: Number(byId('cad-height').value), baseplate: byId('cad-baseplate').checked });
   };
+  if (byId('view-cad')) byId('view-cad').onclick = onViewModel;
   setSpecimenActionsBusy(byId, busy);
 }
 

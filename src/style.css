@@ -379,6 +379,12 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 .cad-stale-note{font-size:0.6875rem;color:var(--warning-ink);line-height:1.6;margin:10px 0 0}
 .cad-controls .height-control{padding-top:12px;margin-top:12px}
 .cad-controls #generate-cad{margin-top:14px}
+.action-progress{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.action-progress>p{font-size:0.6875rem;line-height:1.6;overflow-wrap:anywhere}
+.action-progress progress{display:block;width:100%;height:7px;margin-top:12px;accent-color:var(--accent)}
+.action-progress-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px}
+.action-progress-footer>span{font-size:0.625rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.view-cad{margin-top:14px}
 .image-review{margin-top:18px;border-top:1px solid var(--border);padding-top:14px}
 .image-review>p,.image-review li p{font-size:0.625rem;line-height:1.6;color:var(--muted);margin-top:6px}
 .image-review ul{padding-left:16px;margin:10px 0 0}

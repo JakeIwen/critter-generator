@@ -24,7 +24,8 @@ export function mountStudio() {
   const form = mountGenerationForm(byId, settings => jobs.launch('/api/generate', settings), toast);
   const specimenView = createSpecimenView(byId, {
     onPortrait: (specimen, body = {}) => jobs.launch(`/api/specimens/${specimen.id}/portrait`, body, JOB_KINDS.PORTRAIT),
-    onCad: (specimen, body) => jobs.launch(`/api/specimens/${specimen.id}/cad`, body, JOB_KINDS.CAD),
+    onCad: (specimen, body) => jobs.launch(`/api/specimens/${specimen.id}/cad`, body, JOB_KINDS.CAD, specimen.id),
+    onCancel: () => jobs.cancel(),
     onReuse: form.applySettings,
     onError: toast,
   });
@@ -41,6 +42,7 @@ export function mountStudio() {
     } catch (error) { toast(error.message); }
   }
   const jobs = createJobController(byId, {
+    onJob: (job, title) => specimenView.setJob(job, title),
     onBusy(value) { form.setBusy(value); specimenView.setBusy(value); },
     onLaunchPending(job, title) { router.navigate({ page: 'lab' }); specimenView.showPending(job, title); },
     onPending(job, title) { specimenView.showPending(job, title); },

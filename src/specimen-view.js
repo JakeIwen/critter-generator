@@ -1,4 +1,6 @@
+import { JOB_KINDS } from '../shared/generation-timing.mjs';
 import { api, specimenFile } from './api.js';
+import { createActionProgress } from './action-progress.js';
 import { icon } from './icons.js';
 import { escape, usedSliders, hasPrintModel } from './specimen-format.js';
 import { cadIsStale } from '../shared/specimen-assets.mjs';
@@ -69,12 +71,15 @@ function renderPortrait(byId, specimen, { busy, onPortrait, isCurrent }) {
   byId('view-caption').textContent = 'PORTRAIT NOT YET GENERATED';
 }
 
-export function createSpecimenView(byId, { onPortrait, onCad, onReuse, onError }) {
+export function createSpecimenView(byId, { onPortrait, onCad, onCancel, onReuse, onError }) {
   let activeJob = false;
   let selected = null;
   let tab = 'portrait';
   let viewToken = 0;
   let viewer = null;
+  let job = null, jobTitle = '';
+  const cadProgress = createActionProgress(byId, { id: 'cad', buttonId: 'generate-cad', loadingLabel: 'Generating CAD…', onCancel });
+  const updateActionProgress = () => cadProgress.update(job?.kind === JOB_KINDS.CAD && job.specimenId === selected?.id ? job : null, jobTitle);
 
   async function showView(next) {
     if (next === 'model' && !hasPrintModel(selected)) next = 'portrait';
@@ -115,7 +120,10 @@ export function createSpecimenView(byId, { onPortrait, onCad, onReuse, onError }
     byId('specimen-tag').textContent = specimen.demo ? 'EXAMPLE / SPECIMEN' : `SPECIMEN / ${String(specimens.filter(item => !item.demo).length - specimens.findIndex(item => item.id === specimen.id)).padStart(3,'0')}`;
     setPrintActions(byId, specimen);
     renderFieldNotes(byId, specimen, activeJob, onPortrait, onReuse);
-    renderSpecimenActions(byId, specimen, { busy: activeJob, onPortrait, onCad });
+    renderSpecimenActions(byId, specimen, { busy: activeJob, onPortrait, onCad, onViewModel() {
+      void showView('model'); byId('model-tab').scrollIntoView({ block: 'center', behavior: 'smooth' }); byId('model-tab').focus({ preventScroll: true });
+    } });
+    updateActionProgress();
     await showView(!specimen.image && hasPrintModel(specimen) ? 'model' : tab);
   }
 
@@ -125,6 +133,7 @@ export function createSpecimenView(byId, { onPortrait, onCad, onReuse, onError }
   return {
     get selectedId() { return selected?.id; },
     select,
+    setJob(value, title) { job = value; jobTitle = title; updateActionProgress(); },
     resetToPortrait() { tab = 'portrait'; },
     preferModel() { tab = 'model'; },
     selectPortrait(specimen, specimens) { tab = 'portrait'; return select(specimen, specimens); },
@@ -136,7 +145,7 @@ export function createSpecimenView(byId, { onPortrait, onCad, onReuse, onError }
       if (!byId('pending-visual')) {
         ++viewToken; viewer?.dispose(); viewer = null; selected = null;
         tab = 'portrait';
-        renderPendingView(byId);
+        renderPendingView(byId); updateActionProgress();
       }
       byId('pending-title').textContent = title;
       byId('pending-message').textContent = job.message || '';

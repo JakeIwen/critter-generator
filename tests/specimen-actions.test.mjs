@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { portraitVersionsFor, renderImageReview } from '../src/specimen-actions.js';
+import { portraitVersionsFor, renderImageReview, renderSpecimenActions } from '../src/specimen-actions.js';
 import { specimenFile } from '../src/api.js';
 
 test('legacy and versioned portraits retain stable, distinct download links', () => {
@@ -35,4 +35,34 @@ test('advisory review displays uncertainty and escapes model-provided observatio
   assert.doesNotMatch(review, /<script>/);
   assert.match(renderImageReview({ status: 'unavailable' }), /The portrait was saved/);
   assert.equal(renderImageReview(null), '');
+});
+
+function actionView(specimen, busy = false) {
+  const nodes = {}, calls = [];
+  const host = { classList: { toggle() {} }, querySelectorAll: () => Object.values(nodes),
+    set innerHTML(markup) {
+      this.markup = markup;
+      for (const match of markup.matchAll(/id="([^"]+)"/g)) nodes[match[1]] = {};
+    },
+  };
+  const byId = id => id === 'specimen-actions' ? host : nodes[id];
+  renderSpecimenActions(byId, specimen, { busy, onPortrait: (...args) => calls.push(['portrait', ...args]),
+    onCad: (...args) => calls.push(['cad', ...args]), onViewModel: () => calls.push(['model']) });
+  return { host, nodes, calls };
+}
+
+test('CAD card keeps validated form settings and adds a model next step only when a model exists', () => {
+  const specimen = { id: 'saved', image: true, settings: { height: 100 } };
+  const idle = actionView(specimen);
+  assert.match(idle.host.markup, /Not generated/); assert.equal(idle.nodes['view-cad'], undefined);
+  idle.nodes['cad-height'].value = '120'; idle.nodes['cad-baseplate'].checked = false;
+  idle.nodes['cad-form'].onsubmit({ preventDefault() {} });
+  assert.deepEqual(idle.calls, [['cad', specimen, { height: 120, baseplate: false }]]);
+  const ready = actionView({ ...specimen, anatomy: {}, print: { height: 120, sourcePortraitVersion: 1 } });
+  assert.match(ready.host.markup, /Matches portrait/); assert.match(ready.host.markup, /View 3D model/);
+  ready.nodes['view-cad'].onclick(); assert.deepEqual(ready.calls, [['model']]);
+  const failed = actionView({ ...specimen, cadError: 'Could not build <solid>' });
+  assert.match(failed.host.markup, /CAD incomplete: Could not build &lt;solid&gt;/);
+  assert.equal(failed.nodes['generate-cad'].disabled, false);
+  const busy = actionView(specimen, true); assert.equal(busy.nodes['generate-cad'].disabled, true);
 });

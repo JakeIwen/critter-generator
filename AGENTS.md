@@ -21,6 +21,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `src/template.js`, `src/icons.js`, and `src/presets.js`: application markup, SVG icons, and generator presets.
 - `src/generation-form.js` and `src/generation-directions.js`: generator inputs, explicit requirements, direction locks and frozen preview.
 - `src/generation-jobs.js`: browser job lifecycle for discoveries, portrait updates and on-demand CAD.
+- `src/action-progress.js`: reusable in-card indeterminate action feedback, elapsed time and shared cancel callback; currently wired to CAD only.
 - `src/generation-progress.js`: progress against the job's frozen estimate, stable estimated-total display, and timer recovery.
 - `src/specimen-view.js`, `src/specimen-actions.js`, `src/collection.js`, and `src/specimen-format.js`: specimen stage, versioned portrait/edit/CAD controls, collection and shared display formatting.
 - `src/api.js` and `src/connection.js`: shared browser API and Codex connection status boundaries.
