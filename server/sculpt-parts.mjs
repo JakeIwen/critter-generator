@@ -40,7 +40,9 @@ export function sculptParts(input, mmPerUnit, baseplate, rules) {
   if (baseplate) {
     const bounds = parts.map(partBounds), pad = Math.max(2, minRadius), axes = [0, 1];
     const min = axes.map(i => Math.min(...bounds.map(b => b.min[i]))), max = axes.map(i => Math.max(...bounds.map(b => b.max[i])));
-    const center = axes.map(i => (min[i]+max[i])/2), radius = Math.min(...axes.map(i => (max[i]-min[i])/2)) + pad;
+    const center = axes.map(i => (min[i]+max[i])/2), reach = (Math.max(...bounds.map(b => b.max[2])) - SCULPT_GROUND) * rules.minBaseReach;
+    for (const i of axes) { min[i] = Math.min(min[i], center[i] - reach); max[i] = Math.max(max[i], center[i] + reach); }
+    const radius = Math.min(...axes.map(i => (max[i]-min[i])/2)) + pad;
     const height = Math.max(SCULPT_GROUND, rules.baseThicknessMm/mmPerUnit);
     // The full bounding footprint supports off-center and radial forms, not just a torso.
     parts.unshift({ type: 'base', top: SCULPT_GROUND, height, chamfer: Math.min(height/3, rules.baseChamferMm/mmPerUnit),

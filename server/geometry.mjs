@@ -13,6 +13,7 @@ export const PRINT_RULES = {
   baseThicknessMm: 3,   // display base slab
   baseChamferMm: 0.8,   // bottom-edge chamfer that absorbs first-layer squish ("elephant's foot")
   overhangDeg: 45,      // faces tilted further than this from vertical need support
+  minBaseReach: .3,     // base half-depth as a share of figure height, so thin upright forms (a disc on edge) don't tip
 };
 export const DESIGN_VERSION = 'printable-v6';
 const BASE_TOP = SCULPT_GROUND;

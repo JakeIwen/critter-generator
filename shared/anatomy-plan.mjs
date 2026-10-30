@@ -106,12 +106,16 @@ export function parseAnatomyPlan(value, settings) {
 export function generationOutputSchema(validation) {
   const schema = z.toJSONSchema(validation, { target: 'draft-7' });
   delete schema.$schema;
-  const replaceConstants = value => {
+  // Strict structured output takes enum but not const, and no defaults: the model must supply every field.
+  const portable = (value, propertyMap = false) => {
     if (!value || typeof value !== 'object') return;
-    if (Object.hasOwn(value, 'const')) { value.enum = [value.const]; delete value.const; }
-    for (const child of Object.values(value)) replaceConstants(child);
+    if (!propertyMap) {
+      if (Object.hasOwn(value, 'const')) { value.enum = [value.const]; delete value.const; }
+      delete value.default;
+    }
+    for (const [key, child] of Object.entries(value)) portable(child, key === 'properties' && !propertyMap);
   };
-  replaceConstants(schema);
+  portable(schema);
   return schema;
 }
 

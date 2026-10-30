@@ -82,3 +82,16 @@ test('disconnected authored components fail instead of silently publishing loose
   const sculpt = { ...cartwheelSculpt, parts: [cartwheelSculpt.parts[0], { kind: 'ellipsoid', center: [100, 0, 60], radii: [2, 2, 2] }] };
   await assert.rejects(createModel(sculpt, 100, false), /2 disconnected components/);
 });
+
+test('a thin upright sculpt gets a base deep enough not to tip', async () => {
+  const model = await createModel(cartwheelSculpt, 100);
+  const [width, depth, height] = model.info.dimensions;
+  assert(Math.min(width, depth) >= height * 2 * PRINT_RULES.minBaseReach * .95, `base ${width}×${depth} for a ${height} mm figure`);
+});
+
+test('model-facing sculpt schemas carry no defaults for strict structured output', () => {
+  // No sculpt field is named "default", so any occurrence is the keyword.
+  assert(!JSON.stringify(generationOutputSchema(sculptValidation(false))).includes('"default":'));
+  assert.equal(Sculpt.parse({ color: '#112233', accent: '#445566', approximationNotes: [],
+    parts: [{ kind: 'ellipsoid', center: [0, 0, 20], radii: [10, 10, 17] }] }).parts[0].mirrorX, false);
+});
