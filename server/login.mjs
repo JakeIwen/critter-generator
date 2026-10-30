@@ -91,7 +91,7 @@ function page(res, status, { passcode, error }) {
 /* Static hex mirrors of the plum tokens in src/style.css (dark theme); this page runs no script. */
 :root{color-scheme:dark;--bg:#16121b;--surface:#241f2b;--subtle:#2c2534;--border:#847c8e;--text:#eceaf0;--muted:#aea8b5;--accent:#af7cc6;--on-accent:#1b121f;--danger:#ff9088}
 /* Same browser-relative text-scale knob as src/style.css. */
-html{font-size:100%}
+html{font-size:120%}
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:0.9375rem/1.6 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 main{width:min(340px,100% - 32px)}
 h1{font:400 1.875rem/1.2 Georgia,serif;margin:0 0 24px}

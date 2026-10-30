@@ -79,7 +79,7 @@
 }
 *{box-sizing:border-box}
 /* Single text-scale knob, relative to the browser's default font size. */
-html{font-size:100%}
+html{font-size:120%}
 body{margin:0;background:var(--bg);font-size:0.875rem}
 button,input,textarea,select{font:inherit}
 button,a,input,textarea{-webkit-tap-highlight-color:transparent}
@@ -335,7 +335,7 @@ textarea{min-height:75px}
 .animal-choices{border:0;padding:0;margin:0;min-width:0}
 .animal-choices{margin:22px 0}
 .animal-choices legend{font-size:0.6875rem;font-weight:600;display:flex;align-items:center;gap:7px}
-.info-hint{display:inline-grid;place-items:center;width:15px;height:15px;border:1px solid var(--border);border-radius:50%;font-size:0.625rem;font-weight:500;color:var(--muted);cursor:help;flex-shrink:0}
+.info-hint{display:inline-grid;place-items:center;width:0.9375rem;height:0.9375rem;border:1px solid var(--border);border-radius:50%;font-size:0.625rem;font-weight:500;color:var(--muted);cursor:help;flex-shrink:0}
 .info-hint:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .animal-chips{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:8px}
 .animal-chip{border:1px solid var(--border);border-radius:20px;padding:3px 8px;font-size:0.625rem;line-height:1.25;background:var(--surface);text-align:left;min-height:24px}
@@ -350,7 +350,8 @@ select:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outlin
 summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 .generation-options{display:grid;gap:12px;margin:18px 0}
 .generation-options label,.direction-fields>label:not(.field-label){display:grid;gap:6px;font-size:0.6875rem;font-weight:600}
-.option-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.8fr);gap:10px}
+/* Narrow desktop sidebars need a full row for the larger option labels. */
+.option-pair{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
 .direction-details{border-top:1px solid var(--border);padding-top:14px}
 .direction-fields{display:grid;gap:12px;padding-top:12px}
 .direction-fields textarea{min-height:72px;font-weight:400}
@@ -387,14 +388,13 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 .review-satisfied{color:var(--success-ink)}
 @media(max-width:700px){.action-heading h3{font-size:1.25rem}
 .portrait-controls,.cad-controls{padding:16px}
-.option-pair{grid-template-columns:1fr 1fr}
 .view-tabs button{padding:7px}
 .stage-top,.stage-bottom{left:14px;right:14px}
 }
 
 .topbar-tools{display:flex;align-items:center;gap:14px}
 .theme-switch{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--border);border-radius:999px;background:var(--subtle);flex-shrink:0}
-.theme-switch button{display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;min-height:32px;border-radius:999px;font-size:0.6875rem;color:var(--muted)}
+.theme-switch button{display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;min-width:44px;min-height:44px;border-radius:999px;font-size:0.6875rem;color:var(--muted)}
 .theme-switch button[aria-checked="true"]{background:var(--accent-light);color:var(--text)}
 .theme-switch button:not([aria-checked="true"]):hover{color:var(--accent)}
 .theme-switch button:focus-visible{outline-offset:2px}
@@ -417,12 +417,12 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
   .topbar nav{flex:1;min-width:0;justify-content:center;gap:8px;min-height:var(--control-height)}
   .topbar .nav{font-size:0.625rem;padding:0}
   .topbar-tools{margin-left:auto;gap:8px}
-  .theme-switch button{min-width:44px;min-height:44px}
   .presets button{min-height:var(--chip-height)}
   .nav,.view-tabs button,.status-box button,.stage-bottom button,.notes-downloads a,.notes-downloads button{min-height:var(--control-height)}
   .controls .section-heading{margin-bottom:12px}
   .height-control input{min-height:var(--control-height)}
   .generation-options{gap:8px;margin:12px 0}
+  .option-pair{grid-template-columns:minmax(0,1fr) minmax(0,.6fr)}
   .direction-fields{gap:8px;padding-top:8px}
   .direction-details{padding-top:8px}
   summary{min-height:var(--control-height);align-content:center}
@@ -467,9 +467,9 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 .app-settings-fields{display:grid;gap:18px}
 .settings-group{display:grid;gap:10px}
 .settings-group>legend{font-size:0.75rem;font-weight:600;margin-bottom:10px}
-.settings-form .app-setting{display:grid;grid-template-columns:minmax(0,1fr) 116px;align-items:center;gap:12px}
+.settings-form .app-setting{display:grid;grid-template-columns:minmax(0,1fr) 7.25rem;align-items:center;gap:12px}
 .settings-number{display:flex;align-items:center;gap:6px;min-width:0}
-.settings-number input{width:66px;flex-shrink:0}
+.settings-number input{width:4.125rem;flex-shrink:0}
 .settings-number>span{font-size:0.625rem;color:var(--muted)}
 .settings-efforts legend{font-size:0.6875rem;font-weight:600;margin-bottom:8px}
 .settings-effort-choices{display:flex;flex-wrap:wrap;gap:8px 14px}
@@ -499,9 +499,11 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 .collection-open:focus-visible{outline:none}
 .collection-open:focus-visible::after{outline:3px solid var(--accent);outline-offset:-4px}
 .collection-footer{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:19px}
-.collection-footer>p{display:flex;align-items:center;flex:1;gap:10px;color:var(--muted);font-size:0.625rem}
+/* Keep each trait/value together while allowing rows inside narrow cards. */
+.collection-footer>p{display:flex;align-items:center;flex:1;flex-wrap:wrap;min-width:0;white-space:nowrap;gap:10px;color:var(--muted);font-size:0.625rem}
 .collection-footer>p i{font-style:normal}
 .collection-footer>p span{margin-left:auto}
 .collection-delete{position:relative;z-index:1;min-height:36px;padding:7px 9px;border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:0.6875rem;white-space:nowrap}
 .collection-delete:hover,.collection-delete.confirming{border-color:var(--danger);color:var(--danger);background:var(--subtle)}
-@media(max-width:600px){.logout,.collection-delete{min-height:44px}}
+@media(max-width:600px){.collection-footer>p{flex-basis:100%}
+.logout,.collection-delete{min-height:44px}}
