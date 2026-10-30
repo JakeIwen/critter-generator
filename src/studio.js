@@ -23,7 +23,7 @@ export function mountStudio() {
   const settingsPage = mountSettingsPage(byId, { onError: toast, onSaved: () => connection.check() });
   const form = mountGenerationForm(byId, settings => jobs.launch('/api/generate', settings), toast);
   const specimenView = createSpecimenView(byId, {
-    onPortrait: (specimen, body = {}) => jobs.launch(`/api/specimens/${specimen.id}/portrait`, body, JOB_KINDS.PORTRAIT),
+    onPortrait: (specimen, body = {}, buttonId) => jobs.launch(`/api/specimens/${specimen.id}/portrait`, body, JOB_KINDS.PORTRAIT, specimen.id, buttonId),
     onCad: (specimen, body) => jobs.launch(`/api/specimens/${specimen.id}/cad`, body, JOB_KINDS.CAD, specimen.id),
     onCancel: () => jobs.cancel(),
     onReuse: form.applySettings,

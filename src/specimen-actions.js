@@ -18,7 +18,8 @@ function portraitControls(specimen) {
   if (!specimen.image) return '';
   const versions = portraitVersionsFor(specimen);
   return `<section class="portrait-controls card" aria-label="Portrait versions and edits"><div class="action-heading"><h3>Portrait <span class="version-label">v${portraitVersionOf(specimen)}</span></h3><button id="regenerate-portrait" class="button secondary" title="Create another portrait of this species. Existing CAD will be marked out of date." data-specimen-action>${icon('sparkle',14)} Another portrait</button></div>
-    <details><summary>Edit this portrait</summary><form id="portrait-edit-form" class="portrait-edit-form"><label for="portrait-edit">What should change?</label><textarea id="portrait-edit" rows="3" maxlength="1000" required placeholder="Change only the fur to rust-orange. Keep the pose, markings and surroundings." data-specimen-action></textarea><button class="button primary" type="submit" data-specimen-action>Apply edit</button></form></details>
+    <details><summary>Edit this portrait</summary><form id="portrait-edit-form" class="portrait-edit-form"><label for="portrait-edit">What should change?</label><textarea id="portrait-edit" rows="3" maxlength="1000" required placeholder="Change only the fur to rust-orange. Keep the pose, markings and surroundings." data-specimen-action></textarea><button id="apply-portrait-edit" class="button primary" type="submit" data-specimen-action>Apply edit</button></form></details>
+    ${actionProgressMarkup('portrait', 'Portrait generation progress')}
     <details class="portrait-history"><summary>Saved portraits (${versions.length})</summary><ul>${versions.map(portrait => `<li><a href="${portrait.url}" download>${icon('download',14)} Portrait v${portrait.version}${portrait.current ? ' · current' : ''}</a>${portrait.jobId ? `<a class="portrait-trace" href="/api/jobs/${encodeURIComponent(portrait.jobId)}/trace?download=1" download>Trace</a>` : ''}${portrait.kind === PORTRAIT_KINDS.EDIT && portrait.instructions ? `<span>${escape(portrait.instructions)}</span>` : ''}</li>`).join('')}</ul></details>
   </section>`;
 }
@@ -42,10 +43,10 @@ function cadControls(specimen) {
 export function renderSpecimenActions(byId, specimen, { busy, onPortrait, onCad, onViewModel }) {
   byId('specimen-actions').innerHTML = portraitControls(specimen) + cadControls(specimen);
   byId('specimen-actions').classList.toggle('hidden', !specimen.image);
-  if (byId('regenerate-portrait')) byId('regenerate-portrait').onclick = () => onPortrait(specimen, {});
+  if (byId('regenerate-portrait')) byId('regenerate-portrait').onclick = () => onPortrait(specimen, {}, 'regenerate-portrait');
   if (byId('portrait-edit-form')) byId('portrait-edit-form').onsubmit = event => {
     event.preventDefault(); const instructions = byId('portrait-edit').value.trim();
-    if (instructions) onPortrait(specimen, { instructions });
+    if (instructions) onPortrait(specimen, { instructions }, 'apply-portrait-edit');
   };
   if (byId('cad-form')) byId('cad-form').onsubmit = event => {
     event.preventDefault();

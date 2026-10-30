@@ -68,3 +68,19 @@ test('CAD card keeps validated form settings and adds a model next step only whe
   assert.equal(failed.nodes['generate-cad'].disabled, false);
   const busy = actionView(specimen, true); assert.equal(busy.nodes['generate-cad'].disabled, true);
 });
+
+test('portrait actions identify the clicked control without changing regeneration or edit requests', () => {
+  const specimen = { id: 'saved', image: true, portraitVersion: 1, settings: { height: 100 } };
+  const v = actionView(specimen);
+  assert.ok(v.nodes['portrait-progress']); assert.ok(v.nodes['portrait-cancel']); assert.ok(v.nodes['apply-portrait-edit']);
+  v.nodes['regenerate-portrait'].onclick();
+  v.nodes['portrait-edit'].value = '  Orange fur  ';
+  let prevented = false;
+  v.nodes['portrait-edit-form'].onsubmit({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.deepEqual(v.calls, [['portrait', specimen, {}, 'regenerate-portrait'], ['portrait', specimen, { instructions: 'Orange fur' }, 'apply-portrait-edit']]);
+  v.nodes['portrait-edit'].value = '  '; v.nodes['portrait-edit-form'].onsubmit({ preventDefault() {} });
+  assert.equal(v.calls.length, 2);
+  const busy = actionView(specimen, true);
+  for (const id of ['regenerate-portrait', 'portrait-edit', 'apply-portrait-edit']) assert.equal(busy.nodes[id].disabled, true);
+});

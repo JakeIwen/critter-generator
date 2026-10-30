@@ -11,9 +11,12 @@ export function createActionProgress(byId, { id, buttonId, loadingLabel, onCance
     if (byId(`${id}-elapsed`)) byId(`${id}-elapsed`).textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   };
   return {
-    update(job, title) {
-      const region = byId(`${id}-progress`), submit = byId(buttonId);
-      if (submit !== button) { button = submit; idleLabel = submit?.innerHTML ?? ''; }
+    update(job, title, { buttonId: activeButtonId = buttonId, loadingLabel: activeLabel = loadingLabel } = {}) {
+      const region = byId(`${id}-progress`), submit = byId(activeButtonId);
+      if (submit !== button) {
+        if (button) button.innerHTML = idleLabel;
+        button = submit; idleLabel = submit?.innerHTML ?? '';
+      }
       region?.classList.toggle('hidden', !job);
       if (!job || !region) {
         if (timer !== null) cancel(timer);
@@ -23,7 +26,7 @@ export function createActionProgress(byId, { id, buttonId, loadingLabel, onCance
       }
       const serverStart = Date.parse(job.createdAt);
       startedAt = Number.isFinite(serverStart) ? serverStart : startedAt ?? now();
-      submit.innerHTML = `<span class="spinner" aria-hidden="true"></span> ${escape(loadingLabel)}`; submit.disabled = true;
+      if (submit) { submit.innerHTML = `<span class="spinner" aria-hidden="true"></span> ${escape(activeLabel)}`; submit.disabled = true; }
       byId(`${id}-message`).textContent = job.cancelling ? 'Cancelling…' : job.message || title;
       byId(`${id}-cancel`).disabled = !job.id || Boolean(job.cancelling);
       byId(`${id}-cancel`).onclick = onCancel;

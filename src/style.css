@@ -380,6 +380,7 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 .cad-controls .height-control{padding-top:12px;margin-top:12px}
 .cad-controls #generate-cad{margin-top:14px}
 .action-progress{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.loading-visual .action-progress{width:100%;text-align:left}
 .action-progress>p{font-size:0.6875rem;line-height:1.6;overflow-wrap:anywhere}
 .action-progress progress{display:block;width:100%;height:7px;margin-top:12px;accent-color:var(--accent)}
 .action-progress-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px}

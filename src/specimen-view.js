@@ -1,6 +1,6 @@
-import { JOB_KINDS } from '../shared/generation-timing.mjs';
+import { createSpecimenActionProgress } from './specimen-action-progress.js';
 import { api, specimenFile } from './api.js';
-import { createActionProgress } from './action-progress.js';
+import { actionProgressMarkup } from './action-progress.js';
 import { icon } from './icons.js';
 import { escape, usedSliders, hasPrintModel } from './specimen-format.js';
 import { cadIsStale } from '../shared/specimen-assets.mjs';
@@ -49,9 +49,10 @@ function renderFieldNotes(byId, specimen, activeJob, onPortrait, onReuse) {
     ${note('Environment',specimen.habitat)}${note('Diet',specimen.diet)}${note('Courtship & biology',specimen.courtship)}${note('Threat assessment',specimen.danger)}
     <blockquote><span>FROM THE FIELD JOURNAL</span>“${escape(specimen.fieldNote)}”</blockquote>
     <div class="notes-downloads">${specimen.image ? `<a href="${specimenFile(specimen,'portrait.png',true)}">${icon('download',14)} Save portrait</a>` : '<button id="retry-portrait">'+icon('sparkle',14)+' '+(specimen.demo ? 'Illustrate example' : 'Retry portrait')+'</button>'}<a href="${specimenFile(specimen,'record.json',true)}">${icon('download',14)} Field notes</a>${specimen.latestTraceJobId ? `<a href="/api/specimens/${encodeURIComponent(specimen.id)}/trace?download=1" download>${icon('download',14)} Generation trace</a>` : ''}<button id="reuse-settings">${icon('reset',14)} New lifeform from settings</button></div>
+    ${!specimen.image ? actionProgressMarkup('retry-portrait', 'Portrait generation progress') : ''}
     ${renderImageReview(specimen.review)}
     ${specimen.imageError ? `<p class="inline-error">Portrait incomplete: ${escape(specimen.imageError)}</p>` : ''}`;
-  if (byId('retry-portrait')) byId('retry-portrait').onclick = () => onPortrait(specimen);
+  if (byId('retry-portrait')) byId('retry-portrait').onclick = () => onPortrait(specimen, {}, 'retry-portrait');
   if (byId('retry-portrait')) byId('retry-portrait').disabled = activeJob;
   byId('reuse-settings').onclick = () => onReuse({ ...specimen.settings });
 }
@@ -65,9 +66,9 @@ function renderPortrait(byId, specimen, { busy, onPortrait, isCurrent }) {
     };
     return;
   }
-  byId('visual').innerHTML = `<div class="loading-visual">${icon('sparkle',40)}<h3>${busy ? 'Observing the lifeform…' : 'Portrait not yet generated'}</h3><p>The field notes are ready. Generate a portrait before requesting CAD.</p><button id="empty-portrait" class="button primary">${icon('sparkle')} ${busy ? 'Portrait in progress' : 'Generate portrait'}</button></div>`;
+  byId('visual').innerHTML = `<div class="loading-visual">${icon('sparkle',40)}<h3>${busy ? 'Observing the lifeform…' : 'Portrait not yet generated'}</h3><p>The field notes are ready. Generate a portrait before requesting CAD.</p><button id="empty-portrait" class="button primary">${icon('sparkle')} ${busy ? 'Portrait in progress' : 'Generate portrait'}</button>${actionProgressMarkup('empty-portrait', 'Portrait generation progress')}</div>`;
   byId('empty-portrait').disabled = busy;
-  byId('empty-portrait').onclick = () => onPortrait(specimen, {});
+  byId('empty-portrait').onclick = () => onPortrait(specimen, {}, 'empty-portrait');
   byId('view-caption').textContent = 'PORTRAIT NOT YET GENERATED';
 }
 
@@ -83,8 +84,8 @@ export function createSpecimenView(byId, { onPortrait, onCad, onCancel, onReuse,
   let viewToken = 0;
   let viewer = null;
   let job = null, jobTitle = '';
-  const cadProgress = createActionProgress(byId, { id: 'cad', buttonId: 'generate-cad', loadingLabel: 'Generating CAD…', onCancel });
-  const updateActionProgress = () => cadProgress.update(job?.kind === JOB_KINDS.CAD && job.specimenId === selected?.id ? job : null, jobTitle);
+  const actionProgress = createSpecimenActionProgress(byId, onCancel);
+  const updateActionProgress = () => actionProgress(job, jobTitle, selected);
 
   async function showView(next) {
     if (next === 'model' && !hasPrintModel(selected)) next = 'portrait';
@@ -99,7 +100,7 @@ export function createSpecimenView(byId, { onPortrait, onCad, onCancel, onReuse,
     const ratio = specimen.settings?.aspectRatio ?? '1:1';
     byId('visual').closest('.portrait-card').style.setProperty('--portrait-ratio', next === 'model' ? '1' : ratio.replace(':', '/'));
     if (next === 'portrait') {
-      renderPortrait(byId, specimen, { busy: activeJob, onPortrait, isCurrent: () => token === viewToken });
+      renderPortrait(byId, specimen, { busy: activeJob, onPortrait, isCurrent: () => token === viewToken }); updateActionProgress();
       return;
     }
     byId('visual').innerHTML = '<div class="loading-visual"><span class="spinner"></span><p>Loading the print sculpture…</p></div>';
