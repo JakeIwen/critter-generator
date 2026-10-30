@@ -2,7 +2,7 @@ import { APP_SETTINGS, APP_SETTINGS_KEY } from '../shared/app-settings.mjs';
 import { mergeAppSettings } from './app-settings.mjs';
 import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { Worker } from 'node:worker_threads';
+import { buildModel } from './model-build.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_GENERATION_MODEL, GENERATION_MODEL_KEY } from '../shared/generation-models.mjs';
 import { generationTimingFromJobs } from '../shared/generation-timing.mjs';
@@ -97,16 +97,9 @@ export class Store {
     const timing = generationTimingFromJobs(jobs, this.appSettings());
     return this.setMetadata(GENERATION_TIMING_KEY, timing);
   }
+  buildModel(anatomy, height, baseplate = true) { return buildModel(anatomy, height, baseplate); }
   async model(id, anatomy, height, baseplate = true, options = {}) {
-    const result = await new Promise((resolve, reject) => {
-      const worker = new Worker(new URL('./model-worker.mjs', import.meta.url), {
-        workerData: { anatomy, height, baseplate }, execArgv: process.execArgv.filter(arg => !arg.startsWith('--input-type')),
-      });
-      const timer = setTimeout(() => { worker.terminate(); reject(new Error('Model generation timed out.')); }, 60000);
-      worker.once('message', result => { clearTimeout(timer); result.error ? reject(new Error(result.error)) : resolve(result); });
-      worker.once('error', e => { clearTimeout(timer); reject(e); });
-      worker.once('exit', code => { clearTimeout(timer); if (code) reject(new Error('Model worker stopped.')); });
-    });
+    const result = options.result ?? await this.buildModel(anatomy, height, baseplate);
     return publishModel(path.dirname(this.file('specimens', id, 'record.json')), result, options);
   }
   portrait(id, bytes) { writeFileSync(this.file('specimens', id, 'portrait.png'), bytes); }

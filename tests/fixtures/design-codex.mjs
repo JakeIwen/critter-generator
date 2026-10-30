@@ -1,19 +1,14 @@
 import { createInterface } from 'node:readline';
 import { appendFileSync, readFileSync } from 'node:fs';
 import sharp from 'sharp';
-import { Anatomy, example } from '../../shared/specimen.mjs';
+import { leglessSculpt } from './sculpts.mjs';
+import { example } from '../../shared/specimen.mjs';
 
 const outcome = JSON.parse(process.env.CRITTER_TEST_TURN_OUTCOME || 'null');
 const send = message => process.stdout.write(JSON.stringify(message) + '\n');
 function designReply(params) {
   const fields = params.outputSchema.properties;
-  if (fields.approximationNotes) {
-    const anatomy = Anatomy.parse({ ...example.anatomy, legLength: 3 });
-    for (const [key, field] of Object.entries(fields.anatomy.properties)) {
-      if (field.enum?.length === 1) anatomy[key] = field.enum[0];
-    }
-    return { anatomy, approximationNotes: ['Fine surface details and flexible appendages are simplified for a sturdy sculpture.'] };
-  }
+  if (fields.parts) return leglessSculpt;
   if (fields.issues) return { issues: [{ requirement: 'Exact visible anatomy', status: 'uncertain',
     observation: 'The offline fixture does not perform a visual judgment.' }] };
   const specimen = { ...example, anatomy: null,

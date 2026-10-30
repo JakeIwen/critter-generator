@@ -37,8 +37,9 @@ export function mountViewer(element, mesh, height) {
   const rim = new THREE.DirectionalLight(0xb7cea3, 3); rim.position.set(height, height, height); scene.add(rim);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(mesh.positions, 3));
+  if (mesh.colors) geometry.setAttribute('color', new THREE.Float32BufferAttribute(mesh.colors, 3));
   geometry.setIndex(mesh.triangles); geometry.computeVertexNormals();
-  const material = new THREE.MeshStandardMaterial({ color: '#bfbd96', roughness: .65, metalness: .13 });
+  const material = new THREE.MeshStandardMaterial({ color: mesh.colors ? '#ffffff' : '#bfbd96', vertexColors: Boolean(mesh.colors), roughness: .65, metalness: .13 });
   const sculpt = new THREE.Mesh(geometry, material); sculpt.castShadow = true; sculpt.receiveShadow = true; scene.add(sculpt);
   const groundGeometry = new THREE.PlaneGeometry(height * 30, height * 30);
   const groundMaterial = new THREE.MeshStandardMaterial({ color: artworkBackground, roughness: 1 });

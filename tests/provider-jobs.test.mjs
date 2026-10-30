@@ -8,7 +8,8 @@ import { GenerationJobs } from '../server/generation-jobs.mjs';
 import { readTrace } from '../server/generation-trace.mjs';
 import { ModelCatalog } from '../server/model-catalog.mjs';
 import { GENERATION_MODEL_KEY, DEFAULT_GENERATION_MODEL } from '../shared/generation-models.mjs';
-import { Anatomy, Settings, example } from '../shared/specimen.mjs';
+import { leglessSculpt } from './fixtures/sculpts.mjs';
+import { Settings, example } from '../shared/specimen.mjs';
 
 async function setup(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'critter-provider-jobs-'));
@@ -27,7 +28,7 @@ async function setup(t) {
       options.onThread?.(threadId);
       if (options.image) return { text: '', images: [{ result: bytes.toString('base64') }], threadId };
       const output = options.schema.properties.issues ? { issues: [] } : options.schema.properties.approximationNotes
-        ? { anatomy: Anatomy.parse({ ...example.anatomy, legPairs: 0, legLength: 0 }), approximationNotes: ['Fine flexible flippers are approximated by a smooth solid.'] } : design;
+        ? leglessSculpt : design;
       return { text: JSON.stringify(output), images: [], threadId };
     } });
   const providers = { codex: provider('codex', 'image-default', 'medium'), claude: provider('claude', 'fable', 'high') };

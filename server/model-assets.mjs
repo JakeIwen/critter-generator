@@ -6,7 +6,7 @@ function writeModelAssets(folder, result) {
   mkdirSync(folder, { recursive: true });
   writeFileSync(path.join(folder, 'model.stl'), result.stl);
   writeFileSync(path.join(folder, 'model.scad'), result.model.scad);
-  writeFileSync(path.join(folder, 'mesh.json'), JSON.stringify({ positions: result.model.positions, triangles: result.model.triangles }));
+  writeFileSync(path.join(folder, 'mesh.json'), JSON.stringify({ positions: result.model.positions, triangles: result.model.triangles, ...(result.model.colors ? { colors: result.model.colors } : {}) }));
 }
 
 export function publishModel(folder, result, options = {}) {

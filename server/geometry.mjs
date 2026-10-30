@@ -1,4 +1,7 @@
 import ManifoldModule from 'manifold-3d';
+import { sculptParts, partBounds, minimumPartRadius } from './sculpt-parts.mjs';
+import { partSolid, colorSolid, solidMesh } from './model-solid.mjs';
+import { SCULPT_GROUND } from '../shared/sculpt.mjs';
 import { sculptHead } from './sculpt-head.mjs';
 import { Anatomy } from '../shared/specimen.mjs';
 import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
@@ -11,8 +14,8 @@ export const PRINT_RULES = {
   baseChamferMm: 0.8,   // bottom-edge chamfer that absorbs first-layer squish ("elephant's foot")
   overhangDeg: 45,      // faces tilted further than this from vertical need support
 };
-export const DESIGN_VERSION = 'printable-v5';
-const BASE_TOP = 3;
+export const DESIGN_VERSION = 'printable-v6';
+const BASE_TOP = SCULPT_GROUND;
 const GROUNDED_TAIL = 10;
 
 // One shared recipe drives both the boolean solid and editable OpenSCAD source.
@@ -28,6 +31,7 @@ export function legProfile(input) {
 // mmPerUnit is the print scale; feature minimums depend on it. createModel
 // solves for it, and the default approximates a 60 mm print.
 export function recipe(input, mmPerUnit = 1, baseplate = true) {
+  if (Object.hasOwn(input, 'parts')) return sculptParts(input, mmPerUnit, baseplate, PRINT_RULES);
   const a = Anatomy.parse(input), parts = [];
   const minRadius = PRINT_RULES.minFeatureMm / 2 / mmPerUnit * 1.05;
   const thick = r => Math.max(r, minRadius);
@@ -95,9 +99,7 @@ export function recipe(input, mmPerUnit = 1, baseplate = true) {
 function verticalSpan(parts, baseplate) {
   let low = Infinity, high = -Infinity;
   for (const part of parts) {
-    const [bottom, top] = part.type === 'base' ? [part.top - part.height, part.top]
-      : part.type === 'ellipsoid' ? [part.p[2] - part.r[2], part.p[2] + part.r[2]]
-      : [Math.min(part.p[2] - part.r, part.q[2] - part.s), Math.max(part.p[2] + part.r, part.q[2] + part.s)];
+    const bounds = partBounds(part), bottom = bounds.min[2], top = bounds.max[2];
     low = Math.min(low, bottom); high = Math.max(high, top);
   }
   return high - (baseplate ? low : Math.max(BASE_TOP, low));
@@ -138,20 +140,11 @@ export async function createModel(anatomy, height = PRINT_HEIGHT.initial, basepl
   const parts = printRecipe(anatomy, height, baseplate), owned = [];
   const keep = v => { owned.push(v); return v; };
   const unitBall = keep(Manifold.sphere(1, 32));
-  const ball = (p, r) => keep(unitBall.scale(r)).translate(p);
+  const sculpt = Object.hasOwn(anatomy, 'parts');
   try {
     const solids = parts.map(part => {
-      if (part.type === 'base') {
-        const { height: h, chamfer: c } = part;
-        const discs = part.discs.flatMap(([x, y, r]) => [
-          keep(keep(Manifold.cylinder(c, r - c, r, 96)).translate([x, y, 0])),
-          keep(keep(Manifold.cylinder(h - c, r, r, 96)).translate([x, y, c]))]);
-        return keep(keep(Manifold.hull(discs)).translate([0, 0, part.top - h]));
-      }
-      if (part.type === 'ellipsoid') return keep(ball(part.p, part.r));
-      const one = keep(ball(part.p, [part.r, part.r, part.r]));
-      const two = keep(ball(part.q, [part.s, part.s, part.s]));
-      return keep(Manifold.hull([one, two]));
+      const solid = partSolid(Manifold, unitBall, part, keep);
+      return sculpt ? colorSolid(solid, part.tag === 'accent' ? anatomy.accent : anatomy.color, keep) : solid;
     });
     const complete = keep(Manifold.union(solids));
     // Flat feet, belly and tail pads contact the same plane when there is no slab.
@@ -164,25 +157,22 @@ export async function createModel(anatomy, height = PRINT_HEIGHT.initial, basepl
     const bounds = union.boundingBox();
     const scale = height / (bounds.max[2] - bounds.min[2]);
     const scaled = keep(keep(union.translate([0, 0, -bounds.min[2]])).scale(scale));
-    const mesh = scaled.getMesh();
-    const positions = [];
-    for (let i = 0; i < mesh.vertProperties.length; i += mesh.numProp) positions.push(...mesh.vertProperties.slice(i, i + 3));
-    const triangles = Array.from(mesh.triVerts);
+    const mesh = solidMesh(scaled), { positions, triangles } = mesh;
     const box = scaled.boundingBox();
     const base = parts.find(p => p.type === 'base');
     const links = parts.filter(p => p.type === 'link');
     const mm = v => Math.round(v * scale * 10) / 10;
     const { overhangPct, centerOfMass } = printAnalysis(positions, triangles);
-    // The base is centered on the origin, so this is the distance from its middle.
-    const centerOffset = Math.hypot(centerOfMass[0], centerOfMass[1]);
+    // Free-form poses need not be origin-centered; measure balance from their footprint center.
+    const centerOffset = Math.hypot(centerOfMass[0] - (base?.center?.[0] ?? 0)*scale, centerOfMass[1] - (base?.center?.[1] ?? 0)*scale);
     return {
-      positions, triangles, parts, scale,
+      ...mesh, parts, scale,
       info: { designVersion: DESIGN_VERSION, watertight: true, components: componentCount, triangles: scaled.numTri(),
         legShaftDiameterMm: anatomy.legPairs ? mm(legProfile(anatomy).radius * 2) : null,
-        minFeatureDiameterMm: links.length ? mm(Math.min(...links.flatMap(p => [p.r, p.s])) * 2) : null,
+        minFeatureDiameterMm: sculpt ? mm(minimumPartRadius(parts)*2) : links.length ? mm(Math.min(...links.flatMap(p => [p.r, p.s])) * 2) : null,
         baseplate, baseThicknessMm: base ? mm(base.height) : 0, baseChamferMm: base ? mm(base.chamfer) : 0,
         overhangPct, stable: base ? centerOffset < base.radius * scale * .5 : null,
-        tailRestsOnBase: baseplate && anatomy.tailLength >= GROUNDED_TAIL,
+        tailRestsOnBase: !sculpt && baseplate && anatomy.tailLength >= GROUNDED_TAIL,
         dimensions: box.max.map((v, i) => Math.round((v - box.min[i]) * 10) / 10),
         volumeCm3: Math.round(scaled.volume() / 100) / 10, height, units: 'mm',
         printNote: `${baseplate ? 'Print upright on the chamfered base.' : 'Print upright on the flat contact surfaces. Without a baseplate, check bed adhesion and balance; consider a brim.'} Every horn, antenna and tail segment is at least ${PRINT_RULES.minFeatureMm} mm thick${baseplate && anatomy.tailLength >= GROUNDED_TAIL ? ' and the tail rests on the base' : ''}. About ${Math.round(overhangPct)}% of the surface overhangs more than ${PRINT_RULES.overhangDeg}°: enable tree or organic supports for the belly, chin and eyes. Preview in your slicer; physical results depend on your printer and material.` },
@@ -218,12 +208,13 @@ function sphereScad(mesh) {
 
 function scadSource(parts, factor, height, bounds, baseplate, sphereMesh) {
   const vector = v => JSON.stringify(v);
-  const ball = (p, r) => `translate(${vector(p)}) scale(${vector(r)}) unit_ball();`;
+  const ball = (p, r, rotation) => `translate(${vector(p)}) ${rotation ? `rotate(${vector(rotation)}) ` : ''}scale(${vector(r)}) unit_ball();`;
   const clip = baseplate ? '' : `\n  // Clip to the same flat contact plane as the STL.\n  translate(${vector(bounds.min)}) cube(${vector(bounds.max.map((v, i) => v - bounds.min[i]))});\n`;
   return `// Critter Generator: editable CSG source. Units: millimeters.\n// This is the simplified print sculpt, not an image-to-3D reconstruction.\n// Change target_height_mm to resize; edit the primitives below to reshape.\n${sphereScad(sphereMesh)}target_height_mm=${height};\nscale(${factor} * target_height_mm / ${height}) translate([0, 0, ${-bounds.min[2]}]) ${baseplate ? '' : 'intersection() {\n'}union() {\n` + parts.map(p => {
     if (p.type === 'base') return `  // Display base; the bottom chamfer offsets first-layer squish.\n  translate([0, 0, ${p.top - p.height}]) hull() {\n` + p.discs.map(([x, y, r]) =>
       `    translate([${x}, ${y}, 0]) { cylinder(h=${p.chamfer}, r1=${r - p.chamfer}, r2=${r}, $fn=96); translate([0, 0, ${p.chamfer}]) cylinder(h=${p.height - p.chamfer}, r=${r}, $fn=96); }`).join('\n') + '\n  }';
-    if (p.type === 'ellipsoid') return `  ${ball(p.p, p.r)}`;
+    if (p.type === 'ellipsoid') return `  ${ball(p.p, p.r, p.rotation)}`;
+    if (p.type === 'hull') return `  hull() { ${p.balls.map(b => ball(b.p, [b.r,b.r,b.r])).join(' ')} }`;
     return `  hull() { ${ball(p.p, [p.r,p.r,p.r])} ${ball(p.q, [p.s,p.s,p.s])} }`;
   }).join('\n') + '\n}\n' + clip + (baseplate ? '' : '}\n');
 }

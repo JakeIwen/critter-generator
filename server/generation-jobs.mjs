@@ -126,7 +126,7 @@ export class GenerationJobs {
       if (!existing) specimen = await this.design(job, settings, plan, trace, signal);
       if (job.kind === JOB_KINDS.CAD) {
         specimen = await generateCad({ specimen, request: cadRequest, store: this.store, providers: this.providers, trace, signal,
-          update: changes => this.update(job, changes) });
+          update: changes => this.update(job, changes), settings: this.getSettings() });
         specimen = this.saveSpecimen({ ...specimen, cadError: null }, job);
       } else specimen = await this.portrait(specimen, job, instructions, trace, signal);
       this.update(job, { status: 'completed', stage: 'done', message: job.kind === JOB_KINDS.CAD ?

@@ -4,4 +4,4 @@ export const escape = value => String(value ?? '').replace(/[&<>"']/g, character
 
 export const usedSliders = (settings = {}) => sliders.filter(({ id }) => settings[id] !== undefined);
 
-export const hasPrintModel = specimen => Boolean(specimen?.print && specimen?.anatomy);
+export const hasPrintModel = specimen => Boolean(specimen?.print && (specimen?.sculpt || specimen?.anatomy));

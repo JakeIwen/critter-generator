@@ -58,9 +58,11 @@ test('CAD card keeps validated form settings and adds a model next step only whe
   idle.nodes['cad-height'].value = '120'; idle.nodes['cad-baseplate'].checked = false;
   idle.nodes['cad-form'].onsubmit({ preventDefault() {} });
   assert.deepEqual(idle.calls, [['cad', specimen, { height: 120, baseplate: false }]]);
-  const ready = actionView({ ...specimen, anatomy: {}, print: { height: 120, sourcePortraitVersion: 1 } });
-  assert.match(ready.host.markup, /Matches portrait/); assert.match(ready.host.markup, /View 3D model/);
-  ready.nodes['view-cad'].onclick(); assert.deepEqual(ready.calls, [['model']]);
+  for (const design of [{ anatomy: {} }, { anatomy: null, sculpt: { parts: [] } }]) {
+    const ready = actionView({ ...specimen, ...design, print: { height: 120, sourcePortraitVersion: 1 } });
+    assert.match(ready.host.markup, /Matches portrait/); assert.match(ready.host.markup, /View 3D model/);
+    ready.nodes['view-cad'].onclick(); assert.deepEqual(ready.calls, [['model']]);
+  }
   const failed = actionView({ ...specimen, cadError: 'Could not build <solid>' });
   assert.match(failed.host.markup, /CAD incomplete: Could not build &lt;solid&gt;/);
   assert.equal(failed.nodes['generate-cad'].disabled, false);

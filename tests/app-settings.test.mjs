@@ -20,7 +20,7 @@ const job = (id, minutes) => ({ id, kind: 'generation', status: 'completed',
 
 test('app setting definitions retain existing defaults and derive strict integer validation', () => {
   assert.deepEqual(DEFAULT_APP_SETTINGS, { timingWindow: 5, timingOutlierMinutes: 6, initialEstimateSeconds: 130,
-    generationTimeoutMinutes: 10, designAttempts: 3, maxAnimalInspirations: 3, menuModelsPerProvider: 6,
+    generationTimeoutMinutes: 10, designAttempts: 3, cadRepairAttempts: 2, maxAnimalInspirations: 3, menuModelsPerProvider: 6,
     hiddenEfforts: ['ultra'], catalogFreshMinutes: 15 });
   assert.equal(APP_SETTINGS.maxAnimalInspirations.max, animalTypes.length);
   assert.deepEqual(AppSettings.parse(defaultAppSettings()), DEFAULT_APP_SETTINGS);
