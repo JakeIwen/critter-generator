@@ -90,15 +90,17 @@ function page(res, status, { passcode, error }) {
 <style>
 /* Static hex mirrors of the plum tokens in src/style.css (dark theme); this page runs no script. */
 :root{color-scheme:dark;--bg:#16121b;--surface:#241f2b;--subtle:#2c2534;--border:#847c8e;--text:#eceaf0;--muted:#aea8b5;--accent:#af7cc6;--on-accent:#1b121f;--danger:#ff9088}
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:15px/1.6 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+/* Same browser-relative text-scale knob as src/style.css. */
+html{font-size:120%}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:0.9375rem/1.6 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 main{width:min(340px,100% - 32px)}
-h1{font:400 30px/1.2 Georgia,serif;margin:0 0 24px}
-label{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
+h1{font:400 1.875rem/1.2 Georgia,serif;margin:0 0 24px}
+label{display:block;font-size:0.8125rem;font-weight:600;margin-bottom:8px}
 input{box-sizing:border-box;width:100%;padding:11px 12px;font:inherit;border:1px solid var(--border);background:var(--subtle);border-radius:8px;color:inherit}
 button{margin-top:14px;width:100%;padding:12px;font:inherit;font-weight:600;border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);cursor:pointer}
 button:hover{filter:brightness(1.08)}
 input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
-p{margin:16px 0 0;font-size:13px;color:var(--muted)}a{color:var(--accent)}
+p{margin:16px 0 0;font-size:0.8125rem;color:var(--muted)}a{color:var(--accent)}
 .error{color:var(--danger)}
 </style></head><body><main>
 <h1>Critter Generator</h1>
