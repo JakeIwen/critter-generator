@@ -1,4 +1,5 @@
 import { PROVIDERS, providerLabels, GENERATION_STAGES } from '../shared/generation-models.mjs';
+import { safeError } from './safe-error.mjs';
 
 export const MODEL_FAILURE_KINDS = Object.freeze({ BLOCKED: 'blocked', DECLINED: 'declined', OTHER: 'other' });
 const safetyCodes = new Set(['cyberPolicy', 'misalignmentPolicyViolation', 'moderation_blocked', 'content_policy_violation', 'content_filter']);
@@ -9,9 +10,6 @@ const stageActions = Object.freeze({
   [GENERATION_STAGES.CAD_DESIGN]: 'plan this sculpture', [GENERATION_STAGES.DESIGN_REVIEW]: 'review this specimen',
   [GENERATION_STAGES.IMAGE_REVIEW]: 'review this portrait',
 });
-
-export const safeError = error => String(error?.message || error)
-  .replace(/\bsk-[\w-]+/g, '[redacted]').replace(/Bearer\s+[^\s"']+/gi, 'Bearer [redacted]').slice(0, 900);
 
 export function replyExcerpt(text) {
   const line = safeError(text).replace(/\s+/g, ' ').trim();

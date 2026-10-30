@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import { Effort } from './app-settings.mjs';
 import { PROVIDERS, providerLabels } from '../shared/generation-models.mjs';
-import { safeError } from './codex.mjs';
+import { safeError } from './safe-error.mjs';
 
 const ModelId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,119}$/);
 export const GenerationSelection = z.object({ provider: z.enum(Object.values(PROVIDERS)), model: ModelId,

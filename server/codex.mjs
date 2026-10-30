@@ -7,11 +7,10 @@ import os from 'node:os';
 
 import { DEFAULT_GENERATION_MODEL, PROVIDERS, GENERATION_STAGES } from '../shared/generation-models.mjs';
 import { GENERATION_INSTRUCTIONS } from '../shared/generation-instructions.mjs';
+import { modelFailure, missingPortrait } from './model-refusals.mjs';
+import { safeError } from './safe-error.mjs';
 
 const RUNAWAY_WHITESPACE = 400;
-
-import { safeError, modelFailure, missingPortrait } from './model-refusals.mjs';
-export { safeError } from './model-refusals.mjs';
 
 export class Codex {
   constructor(cwd, { getSettings = () => DEFAULT_APP_SETTINGS } = {}) {

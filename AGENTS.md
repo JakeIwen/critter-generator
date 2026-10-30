@@ -47,6 +47,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `server/generation-trace.mjs`: durable exact inputs, model metadata, attempts and stage timing.
 - `server/cad-stage.mjs`: current-image-based simplified CAD planning and build coordination.
 - `server/codex.mjs`: Codex app-server boundary.
+- `server/safe-error.mjs`: credential redaction for every user-visible or traced error string.
 - `server/model-refusals.mjs`: shared model-reply parsing, evidence-based refusal classification, redacted excerpts and stage-specific recovery messages.
 - `server/store.mjs`: SQLite and specimen-asset persistence.
 - `server/portrait-assets.mjs` and `server/model-assets.mjs`: full image decoding/PNG normalization, preserved portrait versions and immutable CAD asset sets.

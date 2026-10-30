@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Codex, imageBytes, safeError } from '../server/codex.mjs';
+import { Codex, imageBytes } from '../server/codex.mjs';
+import { safeError } from '../server/safe-error.mjs';
 
 test('turn events only resolve the owned thread and ignore reasoning', async () => {
   const client = new Codex('/tmp');

@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import { GENERATION_INSTRUCTIONS } from '../shared/generation-instructions.mjs';
 import { PROVIDERS } from '../shared/generation-models.mjs';
-import { safeError, modelFailure } from './model-refusals.mjs';
+import { modelFailure } from './model-refusals.mjs';
+import { safeError } from './safe-error.mjs';
 import { claudeOptions, resolveClaudeExecutable } from './provider-cli.mjs';
 
 // Discovery bounds the subscription handshake, not a generation turn.

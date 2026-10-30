@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { GENERATION_PROMPT_VERSION } from '../shared/generation-options.mjs';
-import { safeError, failureReason } from './model-refusals.mjs';
+import { failureReason } from './model-refusals.mjs';
+import { safeError } from './safe-error.mjs';
 
 // Trace versions are a durable format contract, not a runtime preference.
 export const TRACE_VERSION = 1;
