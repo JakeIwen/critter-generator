@@ -1,4 +1,5 @@
 import { GENERATION_STAGES } from '../shared/generation-models.mjs';
+import { parseModelReply } from './model-refusals.mjs';
 import { z } from 'zod';
 import { GenerationAnatomy } from '../shared/specimen.mjs';
 import { PRINT_HEIGHT } from '../shared/print-settings.mjs';
@@ -36,7 +37,7 @@ export async function generateCad({ specimen, request, store, providers, trace, 
   update({ stage: GENERATION_STAGES.CAD_DESIGN, message: 'Planning a simplified sculpture from the current portrait…' });
   const generated = await trace.run(providers, GENERATION_STAGES.CAD_DESIGN, { prompt: cadDesignPrompt(specimen), schema: generationOutputSchema(validation),
     imagePaths: [store.portraitFile(specimen)], signal });
-  const design = validation.parse(JSON.parse(generated.text));
+  const design = validation.parse(parseModelReply(generated, GENERATION_STAGES.CAD_DESIGN));
   signal.throwIfAborted();
   update({ stage: 'model', message: 'Building and checking the printable solid…' });
   const print = await trace.operation('cad-build', { anatomy: design.anatomy, ...request, sourcePortraitVersion },

@@ -108,3 +108,71 @@ test('new designs use the live configured attempt limit only for runaway output'
   providers.codex.run = async () => { attempts++; throw new Error('Not retryable'); };
   attempts = 0; jobs.start({ settings }); await jobs.current?.promise; assert.equal(attempts, 1);
 });
+
+test('Claude prose refusals fail design without saving a specimen and retain the full reply', async t => {
+  const { store, providers, settings } = await setup(t);
+  store.setMetadata(GENERATION_MODEL_KEY, { provider: 'claude', model: 'fable', effort: 'high' });
+  const reply = 'I cannot write this specimen.\nPlease adjust the description.';
+  providers.claude.run = async () => ({ text: reply, images: [] });
+  const jobs = new GenerationJobs({ store, providers });
+  const { jobId } = jobs.start({ settings }); await jobs.current?.promise;
+  const job = store.get('jobs', jobId);
+  assert.equal(job.status, 'failed'); assert.equal(job.specimenId, null);
+  assert.equal(store.list('specimens').length, 0);
+  assert.equal(job.message, 'Claude declined to write this specimen: “I cannot write this specimen. Please adjust the description.”. No specimen was saved; adjust the description and try again.');
+  assert.equal(readTrace(store, jobId).steps.find(step => step.stage === 'design').responseText, reply);
+});
+
+test('malformed JSON is unreadable output, not automatically a refusal or safety block', async t => {
+  const { store, providers, settings } = await setup(t);
+  providers.codex.run = async () => ({ text: '{"unfinished":', images: [] });
+  const jobs = new GenerationJobs({ store, providers });
+  const { jobId } = jobs.start({ settings }); await jobs.current?.promise;
+  const job = store.get('jobs', jobId);
+  assert.equal(job.status, 'failed'); assert.equal(job.specimenId, null);
+  assert.equal(job.message, 'Codex returned an unreadable response: “{"unfinished":”. No specimen was saved; adjust the description and try again.');
+});
+
+test('review refusals stay advisory, use the same parser and preserve their replies', async t => {
+  const { store, providers, settings } = await setup(t);
+  const run = providers.codex.run;
+  const reply = 'I cannot review this specimen.';
+  providers.codex.run = options => options.schema?.properties.issues ? Promise.resolve({ text: reply, images: [] }) : run(options);
+  const jobs = new GenerationJobs({ store, providers });
+  const { jobId } = jobs.start({ settings }); await jobs.current?.promise;
+  const job = store.get('jobs', jobId), specimen = store.get('specimens', job.specimenId);
+  assert.equal(job.status, 'completed'); assert.equal(specimen.image, true); assert.equal(specimen.review.status, 'unavailable');
+  assert.equal(specimen.review.designError, 'Codex declined to review this specimen: “I cannot review this specimen.”. The saved specimen is unchanged; inspect its requirements manually.');
+  assert.equal(specimen.review.error, 'Codex declined to review this portrait: “I cannot review this specimen.”. The portrait is saved; inspect its requirements manually.');
+  for (const step of readTrace(store, jobId).steps.filter(step => step.stage.endsWith('-review'))) assert.equal(step.responseText, reply);
+});
+
+test('failed edits and CAD refusals accurately report and retain the current portrait and existing CAD', async t => {
+  const { store, providers, settings } = await setup(t);
+  const jobs = new GenerationJobs({ store, providers });
+  const first = jobs.start({ settings }); await jobs.current?.promise;
+  const id = store.get('jobs', first.jobId).specimenId;
+  const cad = jobs.start({ settings, existing: store.get('specimens', id), kind: 'cad', cadRequest: { height: 100, baseplate: false } });
+  await jobs.current?.promise; assert.equal(store.get('jobs', cad.jobId).status, 'completed');
+  const original = store.get('specimens', id), bytes = await readFile(store.portraitFile(original));
+  const model = await readFile(store.modelFile(original, 'model.stl'));
+  const run = providers.codex.run;
+  providers.codex.run = options => options.image ? Promise.resolve({ text: '', images: [{ failure: 'moderation_blocked' }] }) : run(options);
+  const edited = jobs.start({ settings, existing: original, instructions: 'Change its color.' }); await jobs.current?.promise;
+  const edit = store.get('jobs', edited.jobId);
+  assert.equal(edit.status, 'failed');
+  assert.equal(edit.message, 'The image safety filter blocked this portrait. The field notes, current portrait and existing CAD are unchanged; revise the edit instructions and use Apply edit again.');
+  store.setMetadata(GENERATION_MODEL_KEY, { provider: 'claude', model: 'fable', effort: 'high' });
+  const reply = 'I cannot plan this sculpture.';
+  providers.claude.run = async () => ({ text: reply, images: [] });
+  const refused = jobs.start({ settings, existing: store.get('specimens', id), kind: 'cad', cadRequest: { height: 120, baseplate: true } });
+  await jobs.current?.promise;
+  const failed = store.get('jobs', refused.jobId), kept = store.get('specimens', id);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.message, 'Claude declined to plan this sculpture: “I cannot plan this sculpture.”. The field notes, current portrait and existing CAD are unchanged; try another portrait or request CAD again.');
+  assert.equal(kept.cadError, failed.message);
+  for (const key of ['biology', 'portraits', 'portraitVersion', 'print', 'anatomy']) assert.deepEqual(kept[key], original[key]);
+  assert.deepEqual(await readFile(store.portraitFile(kept)), bytes);
+  assert.deepEqual(await readFile(store.modelFile(kept, 'model.stl')), model);
+  assert.equal(readTrace(store, refused.jobId).steps.find(step => step.stage === 'cad-design').responseText, reply);
+});

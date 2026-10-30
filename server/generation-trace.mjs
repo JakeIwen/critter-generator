@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { GENERATION_PROMPT_VERSION } from '../shared/generation-options.mjs';
-import { safeError } from './codex.mjs';
+import { safeError, failureReason } from './model-refusals.mjs';
 
 // Trace versions are a durable format contract, not a runtime preference.
 export const TRACE_VERSION = 1;
@@ -42,7 +42,7 @@ function imageReferences(files, root) {
 function imageMetadata(items) {
   return (items ?? []).map(item => ({ id: item.id ?? null, status: item.status ?? null,
     revisedPrompt: item.revisedPrompt ?? null, transparentBackground: item.transparentBackground ?? null,
-    imageModel: item.model ?? null, failure: item.failure ? safeError(item.failure.message ?? item.failure) : null }));
+    imageModel: item.model ?? null, failure: item.failure ? safeError(failureReason(item.failure)) : null, failureDetails: item.failure ?? null }));
 }
 
 export class GenerationTrace {
@@ -72,14 +72,16 @@ export class GenerationTrace {
       await client.connect?.();
       step.orchestrationModel = selected ? selection.model : client.state.model;
       step.reasoningEffort = selected ? selection.effort : client.effort ?? null;
-      const result = await client.run({ ...options, model: step.orchestrationModel, effort: step.reasoningEffort, onThread: threadId => {
+      const result = await client.run({ ...options, stage, model: step.orchestrationModel, effort: step.reasoningEffort, onThread: threadId => {
         step.threadId = threadId; this.save(); options.onThread?.(threadId);
       } });
       Object.assign(step, { status: 'completed', responseText: result.text,
         images: imageMetadata(result.images) });
-      return result;
+      return { ...result, provider };
     } catch (error) {
       Object.assign(step, { status: 'failed', error: safeError(error), errorCode: error.code ?? null });
+      if (error.providerResponse) Object.assign(step, { responseText: error.providerResponse.text,
+        providerError: error.providerResponse.failure, images: imageMetadata(error.providerResponse.images) });
       throw error;
     } finally {
       step.finishedAt = new Date().toISOString();

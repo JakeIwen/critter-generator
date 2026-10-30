@@ -24,7 +24,7 @@ async function waitFor(read, ready) {
   throw new Error('Isolated generation did not finish in 15 seconds.');
 }
 
-async function isolatedGenerationServer(t, { failFirstPortrait = false, corruptReference = false, failDesignOnce = false, holdReview = false, seedJobs = [] } = {}) {
+async function isolatedGenerationServer(t, { failFirstPortrait = false, corruptReference = false, failDesignOnce = false, holdReview = false, seedJobs = [], outcome = null } = {}) {
   const scratch = await mkdtemp(path.join(tmpdir(), 'critter-generation-'));
   const listener = createServer().listen(0, '127.0.0.1');
   await once(listener, 'listening');
@@ -44,7 +44,7 @@ async function isolatedGenerationServer(t, { failFirstPortrait = false, corruptR
     env: { ...process.env, PATH: bin, PORT: String(port), CRITTER_DATA_DIR: path.join(scratch, 'data'),
       CRITTER_CLAUDE_EXECUTABLE: path.join(bin, 'claude-unavailable'), CRITTER_TEST_LOG: log, CRITTER_TEST_FAIL_FIRST_PORTRAIT: failFirstPortrait ? '1' : '',
       CRITTER_TEST_CORRUPT_REFERENCE: corruptReference ? '1' : '', CRITTER_TEST_FAIL_DESIGN_ONCE: failDesignOnce ? '1' : '',
-      CRITTER_TEST_HOLD_REVIEW: holdReview ? '1' : '', PUBLIC_ORIGIN: '' } });
+      CRITTER_TEST_HOLD_REVIEW: holdReview ? '1' : '', CRITTER_TEST_TURN_OUTCOME: JSON.stringify(outcome), PUBLIC_ORIGIN: '' } });
   let errors = '';
   child.stderr.on('data', data => { errors += data; });
   t.after(async () => {
@@ -117,6 +117,7 @@ test('portrait-only generation saves biology without CAD and retries the same or
   const settings = { ...legacySettings, printModel: false, animalTypes: ['cephalopods'], legless: true };
   const job = await post('/api/generate', settings);
   assert.equal(job.status, 'partial', job.message);
+  assert.equal(job.message, 'The isolated portrait fixture failed once. The field notes are saved; use Retry portrait.');
   const recordRoute = `/api/specimens/${job.specimenId}/files/record.json`;
   const specimen = await get(recordRoute);
   assert.equal((await get('/api/status')).generationTiming.sampleCount, 0, 'Partial generation is not a completed timing sample');
@@ -293,4 +294,52 @@ test('cancelling an advisory review preserves the newly published portrait inste
   assert.equal(kept.image, true); assert.equal(kept.portraitVersion, 1);
   assert.equal(kept.portraits.length, 1); assert.equal(kept.review.status, 'unavailable');
   assert.equal((await fetch(`${origin}/api/specimens/${kept.id}/files/portrait.png`)).status, 200);
+});
+
+test('a blocked image keeps field notes, reports recovery and preserves raw image failure evidence', async t => {
+  const failure = { code: 'moderation_blocked', message: 'The image was blocked by the safety filter.', detail: 'Original failure detail.' };
+  const reply = 'The image tool did not return a portrait.';
+  const { get, post } = await isolatedGenerationServer(t, { outcome: { stage: 'image', items: [
+    { type: 'imageGeneration', id: 'blocked-image', status: 'failed', failure, result: '', revisedPrompt: 'Original revised prompt.' },
+    { type: 'agentMessage', text: reply },
+  ] } });
+  const job = await post('/api/generate', legacySettings);
+  assert.equal(job.status, 'partial');
+  assert.equal(job.message, 'The image safety filter blocked this portrait. The field notes are saved; use Retry portrait, or soften the description or sliders and generate a new specimen.');
+  const specimen = await get(`/api/specimens/${job.specimenId}/files/record.json`);
+  assert(specimen.biology); assert.equal(specimen.print, null); assert.equal(specimen.image, false);
+  assert.equal(specimen.imageError, job.message);
+  const trace = await get(`/api/jobs/${job.id}/trace`), step = trace.steps.find(step => step.stage === 'image');
+  assert.equal(trace.error, job.message); assert.equal(step.responseText, reply);
+  assert.deepEqual(step.images[0].failureDetails, failure); assert.equal(step.images[0].failure, failure.message);
+  assert.equal(step.images[0].revisedPrompt, 'Original revised prompt.');
+});
+
+test('text-only portrait and design refusals become plain messages instead of missing-image or JSON errors', async t => {
+  for (const stage of ['image', 'design']) await t.test(stage, async t => {
+    const action = stage === 'image' ? 'paint this portrait' : 'write this specimen';
+    const reply = `I cannot ${action}.\n\tPlease revise the description.`;
+    const { get, post } = await isolatedGenerationServer(t, { outcome: { stage, items: [{ type: 'agentMessage', text: reply }] } });
+    const job = await post('/api/generate', legacySettings);
+    const recovery = stage === 'image' ? 'The field notes are saved; use Retry portrait, or soften the description or sliders and generate a new specimen.' :
+      'No specimen was saved; adjust the description and try again.';
+    assert.equal(job.message, `Codex declined to ${action}: “I cannot ${action}. Please revise the description.”. ${recovery}`);
+    assert.equal(job.status, stage === 'image' ? 'partial' : 'failed');
+    assert.equal(Boolean(job.specimenId), stage === 'image');
+    const trace = await get(`/api/jobs/${job.id}/trace`);
+    assert.equal(trace.steps.find(step => step.stage === stage).responseText, reply);
+  });
+});
+
+test('policy-failed turns keep structured errors and replies in the trace even without a successful result', async t => {
+  const failure = { message: 'Request could not be completed.', codexErrorInfo: 'misalignmentPolicyViolation',
+    additionalDetails: 'Original policy detail.', misalignment: null };
+  const reply = 'Original declined reply.';
+  const { get, post } = await isolatedGenerationServer(t, { outcome: { stage: 'image',
+    items: [{ type: 'agentMessage', text: reply }], turn: { status: 'failed', error: failure } } });
+  const job = await post('/api/generate', legacySettings);
+  assert.equal(job.status, 'partial');
+  assert.equal(job.message, 'Codex blocked the request to paint this portrait for safety reasons. The field notes are saved; use Retry portrait, or soften the description or sliders and generate a new specimen.');
+  const trace = await get(`/api/jobs/${job.id}/trace`), step = trace.steps.find(step => step.stage === 'image');
+  assert.equal(step.status, 'failed'); assert.equal(step.responseText, reply); assert.deepEqual(step.providerError, failure);
 });

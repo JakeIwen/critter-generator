@@ -2,7 +2,8 @@ import { DEFAULT_APP_SETTINGS, generationTimeoutMessage } from '../shared/app-se
 import { readFile } from 'node:fs/promises';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import { GENERATION_INSTRUCTIONS } from '../shared/generation-instructions.mjs';
-import { safeError } from './codex.mjs';
+import { PROVIDERS } from '../shared/generation-models.mjs';
+import { safeError, modelFailure } from './model-refusals.mjs';
 import { claudeOptions, resolveClaudeExecutable } from './provider-cli.mjs';
 
 // Discovery bounds the subscription handshake, not a generation turn.
@@ -44,21 +45,34 @@ async function* userPrompt(prompt, files) {
   yield { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null };
 }
 
-async function readResult(session, { schema, onThread, onProgress }) {
-  let text = '', threadId = null, result;
+async function readResult(session, { schema, onThread, onProgress, stage }) {
+  let text = '', threadId = null, result, refusal = null, assistantId;
   for await (const message of session) {
     if (message.session_id && message.session_id !== threadId) { threadId = message.session_id; onThread?.(threadId); }
+    if (message.type === 'system' && message.subtype === 'model_refusal_no_fallback') refusal = message;
+    if (message.type === 'system' && message.subtype === 'model_refusal_fallback') refusal = null;
     if (message.type === 'assistant') {
       const content = (message.message?.content ?? []).filter(block => block.type === 'text').map(block => block.text).join('\n');
-      if (content) text = content;
+      const id = message.message?.id;
+      if (id && id !== assistantId) text = '';
+      if (content) text = text && id && id === assistantId ? `${text}\n${content}` : content;
+      assistantId = id;
+      if (message.message?.stop_reason === 'refusal') refusal = { stop_reason: 'refusal' };
       onProgress?.('Claude is writing the specimen…');
     }
     if (message.type !== 'result') continue;
-    if (message.is_error || message.subtype !== 'success') throw new Error(safeError(message.errors?.join(' ') || message.result || 'Claude could not complete this generation.'));
+    // Structured-output retry exhaustion is not, by itself, evidence of a refusal.
+    if (message.is_error || message.subtype !== 'success' || message.stop_reason === 'refusal' || refusal) {
+      throw modelFailure({ provider: PROVIDERS.CLAUDE, stage, reply: text || message.result || '',
+        declined: message.stop_reason === 'refusal' || Boolean(refusal),
+        failure: { subtype: message.subtype, stop_reason: message.stop_reason ?? null, errors: message.errors ?? [], result: message.result ?? null, refusal,
+          message: message.errors?.join(' ') || message.result || 'Claude could not complete this generation.' } });
+    }
     result = message;
     break;
   }
-  if (!result) throw new Error('Claude returned no generation result.');
+  if (!result) throw modelFailure({ provider: PROVIDERS.CLAUDE, stage, reply: text,
+    declined: Boolean(refusal), failure: refusal, fallback: 'Claude returned no generation result.' });
   if (schema && result.structured_output !== undefined) text = JSON.stringify(result.structured_output);
   else text = text || result.result || '';
   return { text, images: [], threadId };
@@ -136,7 +150,11 @@ export class Claude {
       timer = setTimeout(() => stop(generationTimeoutMessage(generationTimeoutMinutes)), generationTimeoutMinutes * 60_000);
     });
     try { return await Promise.race([this.execute(options, abortController), stopped]); }
-    catch (error) { throw new Error(safeError(error)); }
+    catch (error) {
+      if (error.modelFailure) throw error;
+      throw modelFailure({ provider: PROVIDERS.CLAUDE, stage: options.stage,
+        failure: { message: error.message || String(error), ...(error.code ? { code: error.code } : {}) } });
+    }
     finally {
       clearTimeout(timer); options.signal?.removeEventListener('abort', abort);
       this.session?.close(); this.session = null; this.active = false;

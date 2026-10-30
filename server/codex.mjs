@@ -5,13 +5,13 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-import { DEFAULT_GENERATION_MODEL } from '../shared/generation-models.mjs';
+import { DEFAULT_GENERATION_MODEL, PROVIDERS, GENERATION_STAGES } from '../shared/generation-models.mjs';
 import { GENERATION_INSTRUCTIONS } from '../shared/generation-instructions.mjs';
 
 const RUNAWAY_WHITESPACE = 400;
 
-export const safeError = (error) => String(error?.message || error)
-  .replace(/\bsk-[\w-]+/g, '[redacted]').replace(/Bearer\s+[^\s"']+/gi, 'Bearer [redacted]').slice(0, 900);
+import { safeError, modelFailure, missingPortrait } from './model-refusals.mjs';
+export { safeError } from './model-refusals.mjs';
 
 export class Codex {
   constructor(cwd, { getSettings = () => DEFAULT_APP_SETTINGS } = {}) {
@@ -123,11 +123,17 @@ export class Codex {
     }
     if (message.method === 'turn/completed') {
       this.active = null;
-      if (p.turn.status !== 'completed') a.reject(new Error(p.turn.error?.message || `Generation ${p.turn.status}.`));
+      if (p.turn.status !== 'completed') {
+        const error = modelFailure({ provider: PROVIDERS.CODEX, stage: a.stage, failure: p.turn.error,
+          reply: a.messages?.at(-1) || '', fallback: `Generation ${p.turn.status}.` });
+        error.providerResponse.images = a.images ?? [];
+        a.reject(error);
+      }
       else a.resolve({ text: a.messages.at(-1) || '', images: a.images, threadId: a.threadId });
     }
   }
-  async run({ prompt, schema, image = false, imagePaths = [], signal, onProgress, onThread, model, effort }) {
+  async run({ prompt, schema, image = false, imagePaths = [], signal, onProgress, onThread, model, effort,
+    stage = image ? GENERATION_STAGES.IMAGE : GENERATION_STAGES.DESIGN }) {
     await this.connect();
     if (signal?.aborted) throw new Error('Generation cancelled.');
     if (this.active) throw new Error('Codex is already generating a specimen.');
@@ -154,7 +160,7 @@ export class Codex {
     const { generationTimeoutMinutes } = this.getSettings();
     let timer, abort;
     const result = new Promise((resolve, reject) => {
-      this.active = { threadId, messages: [], images: [], resolve, reject, onProgress,
+      this.active = { threadId, stage, messages: [], images: [], resolve, reject, onProgress,
         onTurn: () => { if (signal?.aborted) abort(); } };
       abort = () => {
         if (this.active?.threadId !== threadId) return;
@@ -182,7 +188,7 @@ export class Codex {
   close() { this.child?.kill(); }
 }
 
-export async function imageBytes(items) {
+export async function imageBytes(items, reply = '') {
   for (const item of [...items].reverse()) {
     if (item.failure) continue;
     const raw = item.result || '';
@@ -198,7 +204,7 @@ export async function imageBytes(items) {
       if (isImage(buffer)) return buffer;
     }
   }
-  throw new Error('Codex returned no image. The field notes and printable model are saved; use Retry portrait.');
+  throw missingPortrait(items, reply);
 }
 export function isImage(buffer) {
   return buffer.length < 30 * 1024 * 1024 && (buffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ||

@@ -7,6 +7,7 @@ import { JOB_KINDS, completedGenerationDuration } from '../shared/generation-tim
 import { REVIEW_STATUS, RequirementReview, reviewPrompt, reviewSchema } from '../shared/generation-review.mjs';
 import { PORTRAIT_KINDS, portraitVersionOf } from '../shared/specimen-assets.mjs';
 import { imageBytes, safeError } from './codex.mjs';
+import { parseModelReply, modelFailureMessage } from './model-refusals.mjs';
 import { generateCad } from './cad-stage.mjs';
 import { GenerationTrace, interruptTrace } from './generation-trace.mjs';
 
@@ -68,21 +69,22 @@ export class GenerationJobs {
     }
     signal.throwIfAborted();
     const parsed = await trace.operation('design-validation', { schema: design.schema },
-      () => design.parse(JSON.parse(result.text)));
+      () => design.parse(parseModelReply(result, GENERATION_STAGES.DESIGN)));
     const specimen = { ...parsed, id: randomUUID(), settings, variation, anatomy: null, print: null,
       createdAt: new Date().toISOString(), image: false, demo: false };
     this.update(job, { specimenId: specimen.id }); trace.save({ specimenId: specimen.id });
     return this.saveSpecimen(specimen, job);
   }
   async review(specimen, trace, signal, image) {
+    const stage = image ? GENERATION_STAGES.IMAGE_REVIEW : GENERATION_STAGES.DESIGN_REVIEW;
     try {
-      const result = await trace.run(this.providers, image ? GENERATION_STAGES.IMAGE_REVIEW : GENERATION_STAGES.DESIGN_REVIEW, {
+      const result = await trace.run(this.providers, stage, {
         prompt: reviewPrompt(specimen, { image }), schema: reviewSchema, signal,
         imagePaths: image ? [this.store.portraitFile(specimen)] : [] });
-      return { status: REVIEW_STATUS.REVIEWED, ...RequirementReview.parse(JSON.parse(result.text)) };
+      return { status: REVIEW_STATUS.REVIEWED, ...RequirementReview.parse(parseModelReply(result, stage)) };
     } catch (error) {
       if (signal.aborted) throw error;
-      return { status: REVIEW_STATUS.UNAVAILABLE, issues: [], error: safeError(error) };
+      return { status: REVIEW_STATUS.UNAVAILABLE, issues: [], error: modelFailureMessage(error, { specimen }) };
     }
   }
   async portrait(specimen, job, instructions, trace, signal) {
@@ -95,7 +97,7 @@ export class GenerationJobs {
     onThread: imageThreadId => this.update(job, { imageThreadId }),
     onProgress: message => this.update(job, { message }) });
     signal.throwIfAborted();
-    const bytes = await imageBytes(result.images);
+    const bytes = await imageBytes(result.images, result.text);
     const next = await trace.operation('portrait-publication', { kind, encodedBytes: bytes.length },
       () => this.store.savePortrait(specimen, bytes, { kind, instructions: instructions || null,
         jobId: job.id, createdAt: new Date().toISOString() }));
@@ -131,8 +133,9 @@ export class GenerationJobs {
       trace.save({ status: job.status, finishedAt: job.finishedAt, specimenId: specimen.id,
         portraitVersion: portraitVersionOf(specimen), review: specimen.review ?? null });
     } catch (error) {
-      const message = signal.aborted ? 'Generation cancelled. Completed images, notes and model files have been kept.' : safeError(error);
       if (specimen) specimen = this.store.get('specimens', specimen.id) ?? specimen;
+      const message = signal.aborted ? 'Generation cancelled. Completed images, notes and model files have been kept.' :
+        modelFailureMessage(error, { specimen, instructions });
       if (specimen) specimen = this.saveSpecimen({ ...specimen,
         ...(job.kind === JOB_KINDS.CAD ? { cadError: message } : { imageError: message }) }, job);
       this.update(job, { status: signal.aborted ? 'cancelled' : specimen && !specimen.image ? 'partial' : 'failed',

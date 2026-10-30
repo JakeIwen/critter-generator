@@ -3,6 +3,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { Anatomy, example } from '../../shared/specimen.mjs';
 
+const outcome = JSON.parse(process.env.CRITTER_TEST_TURN_OUTCOME || 'null');
 const send = message => process.stdout.write(JSON.stringify(message) + '\n');
 function designReply(params) {
   const fields = params.outputSchema.properties;
@@ -43,6 +44,13 @@ for await (const line of createInterface({ input: process.stdin })) {
   if (method !== 'turn/start') continue;
   appendFileSync(process.env.CRITTER_TEST_LOG, JSON.stringify(params) + '\n');
   const threadId = params.threadId;
+  const fields = params.outputSchema?.properties;
+  const stage = !fields ? 'image' : fields.visualRequirements ? 'design' : fields.approximationNotes ? 'cad-design' : 'review';
+  if (outcome?.stage === stage) {
+    for (const item of outcome.items ?? []) send({ method: 'item/completed', params: { threadId, item } });
+    send({ method: 'turn/completed', params: { threadId, turn: outcome.turn ?? { status: 'completed' } } });
+    continue;
+  }
   let item;
   if (params.outputSchema) {
     if (params.outputSchema.properties.issues && params.input.some(input => input.type === 'localImage') &&

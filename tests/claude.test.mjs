@@ -143,3 +143,55 @@ test('the isolated-check marker disables even an explicitly resolvable Claude ex
   process.env.CRITTER_CHECK_MARKER = 'isolated-fixture';
   assert.equal(resolveClaudeExecutable(), undefined);
 });
+
+test('Claude refusal stop reasons and no-fallback notices become plain declines with original evidence', async () => {
+  const reply = 'I cannot write this specimen.\nPlease change the description.';
+  for (const messages of [
+    [{ type: 'result', subtype: 'success', stop_reason: 'refusal', result: reply }],
+    [{ type: 'assistant', message: { stop_reason: 'refusal', content: [{ type: 'text', text: reply }] } },
+      { type: 'result', subtype: 'error_during_execution', is_error: true, errors: ['Refused response.'] }],
+    [{ type: 'assistant', message: { content: [{ type: 'text', text: reply }] } },
+      { type: 'system', subtype: 'model_refusal_no_fallback', original_model: 'fable', api_refusal_category: 'bio', content: 'Request declined.' },
+      { type: 'result', subtype: 'error_max_structured_output_retries', errors: ['Could not produce structured output.'] }],
+  ]) {
+    const { provider } = fixture({ messages });
+    await assert.rejects(provider.run({ prompt: 'Describe', schema: { type: 'object' } }), error => {
+      assert.equal(error.message, 'Claude declined to write this specimen: “I cannot write this specimen. Please change the description.”.');
+      assert.equal(error.providerResponse.text, reply); assert(error.providerResponse.failure); return true;
+    });
+  }
+});
+
+test('Claude structured-output exhaustion is not itself evidence of a refusal or safety block', async () => {
+  const { provider } = fixture({ messages: [
+    { type: 'assistant', message: { content: [{ type: 'text', text: '{"unfinished":' }] } },
+    { type: 'result', subtype: 'error_max_structured_output_retries', stop_reason: 'end_turn', is_error: true,
+      errors: ['Could not produce the required structured response.'] },
+  ] });
+  await assert.rejects(provider.run({ prompt: 'Describe', schema: { type: 'object' } }), error => {
+    assert.equal(error.message, 'Could not produce the required structured response.');
+    assert.equal(error.providerResponse.failure.subtype, 'error_max_structured_output_retries'); return true;
+  });
+});
+
+test('Claude fallback success is not rejected because the original model refused', async () => {
+  const { provider } = fixture({ messages: [
+    { type: 'assistant', message: { id: 'first', stop_reason: 'refusal', content: [{ type: 'text', text: 'I cannot help.' }] } },
+    { type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry' },
+    { type: 'assistant', message: { id: 'second', content: [{ type: 'text', text: '{"ok":' }] } },
+    { type: 'assistant', message: { id: 'second', content: [{ type: 'text', text: 'true}' }] } },
+    { type: 'result', subtype: 'success', stop_reason: 'end_turn' },
+  ] });
+  assert.deepEqual(JSON.parse((await provider.run({ prompt: 'Describe', schema: { type: 'object' } })).text), { ok: true });
+});
+
+test('late Claude fallback notices preserve the replacement reply rather than clearing it', async () => {
+  const { provider } = fixture({ messages: [
+    { type: 'assistant', message: { id: 'first', stop_reason: 'refusal', content: [{ type: 'text', text: 'I cannot help.' }] } },
+    { type: 'assistant', message: { id: 'second', content: [{ type: 'thinking', thinking: 'private' }] } },
+    { type: 'assistant', message: { id: 'second', content: [{ type: 'text', text: '{"ok":true}' }] } },
+    { type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry' },
+    { type: 'result', subtype: 'success', stop_reason: 'end_turn' },
+  ] });
+  assert.equal((await provider.run({ prompt: 'Describe', schema: { type: 'object' } })).text, '{"ok":true}');
+});
