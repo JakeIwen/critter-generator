@@ -1,3 +1,4 @@
+import { defaultActiveTheme } from '../shared/appearance.mjs';
 import { DEFAULT_APP_SETTINGS } from '../shared/app-settings.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -64,6 +65,7 @@ async function settingsFixture(t, { providers, selection }) {
     if (url === '/api/models') body = { catalog: { providers, refreshing: false }, selection };
     else if (url === '/api/settings/app') body = { values: structuredClone(DEFAULT_APP_SETTINGS), efforts: ['low', 'medium', 'high', 'max', 'ultra'] };
     else if (url === '/api/stats') body = { recent: [], totals: [], durations: [], byModel: [] };
+    else if (url === '/api/appearance') body = { active: defaultActiveTheme(), themes: [] };
     else if (url === '/api/settings/generation' && options.method === 'PUT') {
       saved.push(JSON.parse(options.body));
       body = { selection: saved.at(-1) };

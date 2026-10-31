@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { PAGE_PATHS, isAppPagePath } from '../shared/page-routes.mjs';
 import { example } from '../shared/specimen.mjs';
 import { Codex } from './codex.mjs';
@@ -12,6 +13,8 @@ import { Claude } from './claude.mjs';
 import { ModelCatalog } from './model-catalog.mjs';
 import { PROVIDERS } from '../shared/generation-models.mjs';
 import { createSettingsRoutes } from './settings-routes.mjs';
+import { createAppearanceRoutes } from './appearance-routes.mjs';
+import { readAppearance, withThemeStyle } from './appearance.mjs';
 import { GenerationJobs } from './generation-jobs.mjs';
 import { createSpecimenRoutes } from './specimen-routes.mjs';
 import { Store } from './store.mjs';
@@ -101,17 +104,22 @@ app.post('/api/connect', async (req, res) => {
   } catch (e) { res.status(503).json({ error: safeError(e) }); }
 });
 app.use(createSettingsRoutes({ store, catalog, isOwner }));
+app.use(createAppearanceRoutes({ store, isOwner }));
 app.use(createSpecimenRoutes({ store, jobs, isOwner }));
 
-app.use(express.static(distRoot, { setHeaders(res, file) {
+// App pages, including / and /index.html, carry the active theme's knobs for first paint.
+app.use(async (req, res, next) => {
+  if (!['GET', 'HEAD'].includes(req.method) || !isAppPagePath(req.path)) return next();
+  try {
+    const html = withThemeStyle(await readFile(path.join(distRoot, 'index.html'), 'utf8'), readAppearance(store).active);
+    res.set('Cache-Control', 'no-transform, no-cache').type('html').send(html);
+  } catch (error) { next(error); }
+});
+app.use(express.static(distRoot, { index: false, setHeaders(res, file) {
   const policy = path.basename(file) === 'index.html' ? 'no-cache'
     : file.startsWith(path.resolve(distRoot, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : null;
   if (policy) res.setHeader('Cache-Control', `${res.getHeader('Cache-Control')}, ${policy}`);
 } }));
-app.use((req, res, next) => {
-  if (!['GET', 'HEAD'].includes(req.method) || !isAppPagePath(req.path)) return next();
-  res.set('Cache-Control', 'no-transform, no-cache').sendFile('index.html', { root: distRoot });
-});
 app.use((err, _req, res, _next) => res.status(err.status || 500).json({ error: err.status === 400 ? 'Invalid JSON request.' : safeError(err) }));
 const server = app.listen(port, '127.0.0.1');
 server.once('listening', () => {

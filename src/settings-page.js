@@ -1,4 +1,7 @@
 import { createAppSettingsCard } from './app-settings-card.js';
+import { draftFromActive } from 'theme-kit/core';
+import { builtinThemes } from '../shared/appearance.mjs';
+import { getAppearance, loadAppearance, subscribeAppearance } from './appearance.js';
 import { PROVIDERS, effortLabel, joinModelValue, menuModels, providerLabels, splitModelValue } from '../shared/generation-models.mjs';
 import { api } from './api.js';
 import { durationLabel, localDateTime, menuModelLabel, modelLabel } from './settings-format.js';
@@ -88,11 +91,22 @@ function statsCard(stats, settings) {
   </article>`;
 }
 
+// Active knobs no saved theme matches show as that theme "adjusted", as the editor names them.
+function appearanceCard() {
+  const { themes, active } = getAppearance();
+  const current = draftFromActive({ builtins: builtinThemes, themes, active }).name;
+  return `<article class="card settings-card">
+    <h2>Appearance</h2>
+    <p class="settings-note">Theme: <strong>${escape(current)}</strong></p>
+    <button type="button" id="open-theme-editor" class="button secondary">Open theme editor</button>
+  </article>`;
+}
+
 function render(section, state) {
   section.innerHTML = `<div class="collection-heading"><h2>Settings</h2></div>
     <p class="settings-error" role="alert">${escape(state.error)}</p>
     ${state.loading ? '<p class="settings-note" role="status">Loading settings…</p>' : ''}
-    ${state.catalog ? `<div class="settings-grid">${generationCard(state)}${state.app.render(state.loading || state.refreshing || state.saving)}${statsCard(state.stats, state.app.values)}</div>` : ''}`;
+    ${state.catalog ? `<div class="settings-grid">${generationCard(state)}${state.app.render(state.loading || state.refreshing || state.saving)}${appearanceCard()}${statsCard(state.stats, state.app.values)}</div>` : ''}`;
 }
 
 async function fetchModels(state, refresh, update) {
@@ -126,7 +140,7 @@ export function mountSettingsPage(byId, { onError, onSaved = () => {} }) {
     if (state.loading || state.refreshing || state.saving || state.app.saving) return;
     state.loading = true; state.error = ''; state.saved = ''; update();
     try {
-      const [models, stats] = await Promise.all([api(modelsUrl), api('/api/stats'), state.app.load()]);
+      const [models, stats] = await Promise.all([api(modelsUrl), api('/api/stats'), state.app.load(), loadAppearance()]);
       state.catalog = models.catalog; state.selection = models.selection;
       state.draft = { ...models.selection }; state.stats = stats; chooseModel(state);
       if (models.catalog.refreshing) await fetchModels(state, false, update);
@@ -165,6 +179,8 @@ export function mountSettingsPage(byId, { onError, onSaved = () => {} }) {
   section.onclick = event => {
     if (event.target.closest('#settings-refresh')) void refresh();
     if (event.target.closest('#app-settings-reset')) state.app.reset();
+    if (event.target.closest('#open-theme-editor')) void import('./theme-editor.js').then(editor => editor.showThemeEditor()).catch(fail);
   };
+  subscribeAppearance(() => { if (state.catalog) update(); });
   return { show };
 }

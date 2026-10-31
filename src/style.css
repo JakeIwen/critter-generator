@@ -405,6 +405,8 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 .theme-switch button[aria-checked="true"]{background:var(--accent-light);color:var(--text)}
 .theme-switch button:not([aria-checked="true"]):hover{color:var(--accent)}
 .theme-switch button:focus-visible{outline-offset:2px}
+/* The shared theme editor pane (theme-kit) takes its colors from these tokens. */
+theme-editor{--te-bg:var(--surface);--te-surface:var(--bg);--te-hover:var(--subtle);--te-selected:var(--accent-light);--te-field:var(--bg);--te-text:var(--text);--te-muted:var(--muted);--te-border:var(--border);--te-control-border:var(--border);--te-accent:var(--accent);--te-focus:var(--focus);--te-danger:var(--danger);--te-shadow:-12px 0 32px var(--shadow-color);--te-radius:12px;--te-font-size:0.75rem}
 .field-label{display:flex;align-items:center;gap:7px;font-size:0.6875rem;font-weight:600}
 .optional-tag{font-size:0.5rem;letter-spacing:1.1px;color:var(--muted);font-weight:500}
 .inspiration-details{min-width:0;border-top:1px solid var(--border);padding-top:10px}

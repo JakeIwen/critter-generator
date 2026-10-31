@@ -5,6 +5,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Store } from '../server/store.mjs';
 import { example } from '../shared/specimen.mjs';
+import { withThemeStyle } from '../server/appearance.mjs';
+import { defaultActiveTheme } from '../shared/appearance.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const scratch = await mkdtemp(path.join(tmpdir(), 'critter-check-'));
@@ -98,7 +100,8 @@ try {
   await Promise.race([waitForServer(`http://127.0.0.1:${port}`), startupError]);
   const servedIndex = await (await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(5_000) })).text();
   const builtIndex = await readFile(path.join(scratch, 'dist/index.html'), 'utf8');
-  if (servedIndex !== builtIndex) throw new Error('isolated server did not serve the scratch build');
+  // Fresh data has the default theme, whose knobs the server writes into every page.
+  if (servedIndex !== withThemeStyle(builtIndex, defaultActiveTheme())) throw new Error('isolated server did not serve the scratch build');
   await run(process.execPath, ['scripts/verify-http.mjs'], { env });
   await verifyOfflineCodex(env.CRITTER_CHECK_MARKER);
 } finally {

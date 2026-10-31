@@ -120,7 +120,8 @@ test('known app pages serve the same uncached index for GET and HEAD; unknown pa
       const response = await request(route, { method });
       assert.equal(response.status, 200, `${method} ${route}`);
       assert.equal(response.headers.get('cache-control'), 'no-transform, no-cache');
-      assert.equal(await response.text(), method === 'GET' ? '<!doctype html><title>Isolated app</title>' : '');
+      // The active theme's knobs (the Critter default here) arrive with the page for first paint.
+      assert.equal(await response.text(), method === 'GET' ? '<!doctype html><style id="theme-knobs">:root{--hue-neutral:305;--hue-brand:315;--hue-accent:70;--chroma:0.8}</style><title>Isolated app</title>' : '');
     }
   }
   assert.equal((await request('/unknown-page')).status, 404);

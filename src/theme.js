@@ -2,9 +2,27 @@ const THEME_STORAGE_KEY = 'critter-theme';
 // Hex mirrors of style.css --bg for browser metadata; the contrast test guards them.
 export const THEME_BACKGROUND = { dark: '#16121b', light: '#f6f4fa' };
 
+const listeners = new Set();
+
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_BACKGROUND[theme]);
+  listeners.forEach(listener => listener());
+}
+
+export const getTheme = () => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+/** For the theme editor's Light/Dark control, which shares this choice with the header switch. */
+export function subscribeTheme(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+export function setTheme(theme) {
+  applyTheme(theme);
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Switching still works when browser storage is unavailable or full.
+  }
 }
 
 export function applyStoredTheme() {
@@ -28,15 +46,9 @@ export function mountThemeToggle(group) {
     }
   }
   function choose(button) {
-    const theme = button.dataset.theme;
-    applyTheme(theme);
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch {
-      // Switching still works when browser storage is unavailable or full.
-    }
-    syncButtons();
+    setTheme(button.dataset.theme);
   }
+  subscribeTheme(syncButtons);
   buttons.forEach((button, index) => {
     button.addEventListener('click', () => choose(button));
     button.addEventListener('keydown', event => {
