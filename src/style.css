@@ -471,8 +471,8 @@ theme-editor{--te-bg:var(--surface);--te-surface:var(--bg);--te-hover:var(--subt
 .settings-form{display:grid;gap:12px;margin-bottom:16px}
 .settings-form label{display:grid;gap:6px;font-size:0.6875rem;font-weight:600;min-width:0}
 .settings-form label[hidden]{display:none}
-.settings-form select,.settings-number input{width:100%;min-width:0;max-width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--subtle);color:var(--text);font:inherit}
-.settings-form select:focus-visible,.settings-number input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.settings-form select,.settings-number input,.access-list-add input{width:100%;min-width:0;max-width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--subtle);color:var(--text);font:inherit}
+.settings-form select:focus-visible,.settings-number input:focus-visible,.access-list-add input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .app-settings-fields,.settings-group,.settings-efforts{border:0;padding:0;min-width:0}
 .app-settings-fields{display:grid;gap:18px}
 .settings-group{display:grid;gap:10px}
@@ -487,6 +487,13 @@ theme-editor{--te-bg:var(--surface);--te-surface:var(--bg);--te-hover:var(--subt
 .settings-effort-choices input{accent-color:var(--accent)}
 .settings-stats{grid-column:1/-1}
 .settings-buttons{display:flex;flex-wrap:wrap;gap:8px}
+.access-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.access-list:empty{display:none}
+.access-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;font-size:0.75rem}
+.access-list li>span{min-width:0;overflow-wrap:anywhere}
+.access-list small{display:block}
+.access-list-add{display:flex;gap:8px;min-width:0}
+.access-list-add input{min-height:var(--control-height)}
 .settings-note{font-size:0.625rem;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
 .settings-reason{color:var(--review)}
 .settings-error{font-size:0.75rem;color:var(--danger);line-height:1.6;overflow-wrap:anywhere;margin-bottom:12px}

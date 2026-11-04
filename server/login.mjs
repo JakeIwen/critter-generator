@@ -3,37 +3,40 @@ import { PAGE_PATHS } from '../shared/page-routes.mjs';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
-// Sign-in for the public host. Cloudflare Access lets everyone reach the app
-// except /auth/email, which it guards with its emailed one-time PIN. A visitor
-// signs in either with the shared passcode or through that email path, and
-// gets this app's own session cookie either way.
+// Sign-in for the public host. Cloudflare Access proves an email address with
+// its one-time PIN at /auth/email; this app's owner and stored sign-in list
+// decide who gets an app session. Visitors can also use the shared passcode.
 export const COOKIE = '__Host-critter_session';
 const SESSION_MS = 7 * 24 * 3600_000; // Matches the Access session length.
 const SESSION_METHODS = ['passcode', 'email', 'owner'];
 const FAILURES_PER_IP = 10, FAILURES_TOTAL = 100, FAILURE_WINDOW_MS = 15 * 60_000;
 
-export function createLogin({ publicOrigin, passcode, verifyAccess, secretFile, ownerEmail, now = () => Date.now() }) {
+export function createLogin({ publicOrigin, passcode, verifyAccess, secretFile, ownerEmail, allowedEmails = () => [], now = () => Date.now() }) {
   const secret = loadSecret(secretFile);
   const passcodeHash = passcode ? sha256(passcode) : null;
   // A blank owner address configures nobody as owner; an empty claim must never match it.
   const ownerAddress = String(ownerEmail ?? '').trim().toLowerCase();
-  // Passcode sessions are bound to the passcode, so changing it signs those visitors out.
-  const sign = (method, expires) => createHmac('sha256', secret)
-    .update(`${method}.${expires}.${method === 'passcode' ? passcodeHash?.toString('hex') : ''}`).digest('base64url');
+  // Bind passcode sessions to the passcode and email sessions to the proved address.
+  const sign = (method, expires, address = '') => createHmac('sha256', secret)
+    .update(`${method}.${expires}.${method === 'passcode' ? passcodeHash?.toString('hex') : address}`).digest('base64url');
   const failures = [];
 
   function sessionMethod(req) {
-    const value = cookies(req.headers.cookie)[COOKIE];
-    const [method, expires, signature] = value?.split('.') || [];
-    if (!SESSION_METHODS.includes(method) || !(Number(expires) > now())) return null;
+    const session = parseSession(cookies(req.headers.cookie)[COOKIE], now());
+    if (!session) return null;
+    const { method, expires, signature, address, email } = session;
     if (method === 'passcode' && !passcodeHash) return null;
-    return safeEqual(Buffer.from(signature || ''), Buffer.from(sign(method, expires))) ? method : null;
+    if (!safeEqual(Buffer.from(signature), Buffer.from(sign(method, expires, address)))) return null;
+    if (method === 'email' && !allowedEmails().includes(email)) return null;
+    return method;
   }
   function signedIn(req) { return sessionMethod(req) !== null; }
   function isOwner(req) { return sessionMethod(req) === 'owner'; }
-  function startSession(res, method) {
+  function startSession(res, method, email = '') {
     const expires = now() + SESSION_MS;
-    res.setHeader('Set-Cookie', `${COOKIE}=${method}.${expires}.${sign(method, expires)}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; Secure; SameSite=Lax`);
+    const address = method === 'email' ? Buffer.from(email).toString('base64url') : '';
+    const value = `${method}.${expires}.${address ? `${address}.` : ''}${sign(method, expires, address)}`;
+    res.setHeader('Set-Cookie', `${COOKIE}=${value}; Path=/; Max-Age=${SESSION_MS / 1000}; HttpOnly; Secure; SameSite=Lax`);
     res.redirect(303, '/');
   }
   // Pages get the sign-in form; API calls get a JSON error the frontend can show.
@@ -59,16 +62,20 @@ export function createLogin({ publicOrigin, passcode, verifyAccess, secretFile, 
     failures.push({ ip, at: now() });
     page(res, 401, { passcode: true, error: 'That passcode is not right.' });
   });
-  // Cloudflare Access only lets listed emails reach this path, with a signed token.
+  // Access proves the address; membership is checked here and again on each email session request.
   router.get('/auth/email', async (req, res) => {
     let claims;
     try { claims = await verifyAccess(req.headers['cf-access-jwt-assertion']); } catch {
       return page(res, 403, { passcode: Boolean(passcodeHash), error: 'Email sign-in did not go through. Try again.' });
     }
-    const claimEmail = String(claims.email ?? '').trim().toLowerCase();
+    const claimEmail = String(claims?.email ?? '').trim().toLowerCase();
     const method = ownerAddress && claimEmail === ownerAddress ? 'owner' : 'email';
+    if (method === 'email' && (!claimEmail || !allowedEmails().includes(claimEmail))) return page(res, 403, {
+      passcode: Boolean(passcodeHash), accessLogout: true,
+      error: `${claimEmail || 'This email address'} is not on this app's sign-in list. Ask the owner to add it.`,
+    });
     console.log(`email sign-in: ${method} session`);
-    startSession(res, method);
+    startSession(res, method, claimEmail);
   });
 
   router.get(PAGE_PATHS.logout, (_req, res) => logout(res, '/auth'));
@@ -81,7 +88,24 @@ export function logout(res, target) {
   res.redirect(303, target);
 }
 
-function page(res, status, { passcode, error }) {
+function parseSession(value, now) {
+  const parts = value?.split('.') || [], [method, expires] = parts;
+  if (!SESSION_METHODS.includes(method) || parts.length !== (method === 'email' ? 4 : 3)) return null;
+  if (!/^[1-9]\d*$/.test(expires) || !Number.isSafeInteger(Number(expires)) || Number(expires) <= now) return null;
+  const signature = parts.at(-1), address = method === 'email' ? parts[2] : '';
+  if (!/^[A-Za-z0-9_-]{43}$/.test(signature)) return null;
+  let email = '';
+  if (method === 'email') {
+    if (!/^[A-Za-z0-9_-]+$/.test(address)) return null;
+    email = Buffer.from(address, 'base64url').toString('utf8');
+    if (Buffer.from(email).toString('base64url') !== address) return null;
+  }
+  return { method, expires, signature, address, email };
+}
+
+const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+
+function page(res, status, { passcode, error, accessLogout = false }) {
   // Under the app-wide no-referrer policy, browsers post this form with "Origin: null".
   res.setHeader('Referrer-Policy', 'same-origin');
   res.status(status).type('html').send(`<!doctype html>
@@ -109,7 +133,8 @@ ${passcode ? `<form method="post" action="/auth/passcode">
 <input id="passcode" name="passcode" type="password" autocomplete="current-password" required autofocus>
 <button type="submit">Enter</button>
 </form>` : ''}
-${error ? `<p class="error" role="alert">${error}</p>` : ''}
+${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ''}
+${accessLogout ? '<p><a href="/cdn-cgi/access/logout">Sign out of email to try another address</a></p>' : ''}
 <p><a href="/auth/email">${passcode ? 'Sign in with email instead' : 'Sign in with email'}</a></p>
 </main></body></html>`);
 }

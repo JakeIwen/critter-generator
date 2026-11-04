@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { APP_SETTINGS, APP_SETTINGS_KEY } from '../shared/app-settings.mjs';
 import { mergeAppSettings } from './app-settings.mjs';
 import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, existsSync } from 'node:fs';
@@ -11,10 +12,16 @@ import { normalizePortrait, publishPortrait } from './portrait-assets.mjs';
 import { publishModel } from './model-assets.mjs';
 
 const GENERATION_TIMING_KEY = 'generation-timing';
+const EMAIL_ALLOW_LIST_KEY = 'email-allow-list';
+export const EmailAllowList = z.object({
+  emails: z.array(z.string().trim().toLowerCase().max(254, 'Email addresses must be at most 254 characters.')
+    .email('Enter a valid email address.')).max(200, 'The sign-in list may contain at most 200 entries.'),
+}).strict();
 
 export class Store {
-  constructor(root) {
+  constructor(root, { ownerEmail } = {}) {
     this.root = root;
+    this.ownerEmail = String(ownerEmail ?? '').trim().toLowerCase();
     for (const folder of ['specimens', 'jobs', 'workspace']) mkdirSync(path.join(root, folder), { recursive: true });
     this.db = new DatabaseSync(path.join(root, 'critters.sqlite'));
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
@@ -79,6 +86,14 @@ export class Store {
     this.db.prepare('INSERT INTO app_metadata(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
       .run(key, JSON.stringify(value));
     return value;
+  }
+  emailAllowList() { return this.metadata(EMAIL_ALLOW_LIST_KEY, { emails: [], updatedAt: null }); }
+  saveEmailAllowList(emails) {
+    const parsed = EmailAllowList.parse({ emails });
+    return this.setMetadata(EMAIL_ALLOW_LIST_KEY, {
+      emails: [...new Set(parsed.emails)].filter(email => email !== this.ownerEmail).sort(),
+      updatedAt: new Date().toISOString(),
+    });
   }
   appSettings() { return mergeAppSettings(this.metadata(APP_SETTINGS_KEY)); }
   saveAppSettings(values) {

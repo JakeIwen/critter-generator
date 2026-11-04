@@ -1,12 +1,26 @@
 import { Router } from 'express';
 import { AppSettings } from './app-settings.mjs';
+import { EmailAllowList } from './store.mjs';
 import { GENERATION_MODEL_KEY } from '../shared/generation-models.mjs';
 import { GenerationSelection } from './model-catalog.mjs';
 import { generationStats } from './generation-stats.mjs';
 
-export function createSettingsRoutes({ store, catalog, isOwner }) {
+export function createSettingsRoutes({ store, catalog, isOwner, ownerEmail = null, emailSignIn = false }) {
   const router = Router();
+  const owner = String(ownerEmail ?? '').trim().toLowerCase() || null;
+  const accessSettings = () => ({ emails: store.emailAllowList().emails, owner, emailSignIn });
   const ownerOnly = (req, res, next) => isOwner(req) ? next() : res.status(403).json({ error: 'Owner access only.' });
+  router.get('/api/settings/access', ownerOnly, (_req, res) => res.json(accessSettings()));
+  router.put('/api/settings/access', ownerOnly, (req, res) => {
+    const parsed = EmailAllowList.safeParse(req.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0], index = issue.path[1];
+      const entry = Number.isInteger(index) ? ` at entry ${index + 1} (${JSON.stringify(req.body.emails[index])})` : '';
+      return res.status(400).json({ error: `Invalid sign-in list${entry}: ${issue.message}` });
+    }
+    store.saveEmailAllowList(parsed.data.emails);
+    res.json(accessSettings());
+  });
   router.get('/api/models', ownerOnly, async (req, res) => {
     const models = await catalog.getCatalog({ refresh: req.query.refresh === '1' });
     res.json({ catalog: models, selection: store.generationModel() });

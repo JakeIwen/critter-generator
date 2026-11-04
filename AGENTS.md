@@ -30,6 +30,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `shared/app-settings.mjs`: browser-safe app-setting definitions/defaults, groups and public configuration subset.
 - `server/app-settings.mjs`: strict HTTP validation derived from those definitions and stored-value merging.
 - `src/app-settings-card.js`: grouped owner app-settings form, draft reset and persistence.
+- `src/access-list-card.js`: owner email sign-in list, fixed owner entry, add/remove drafts, save and reset.
 - `shared/sliders.mjs`: canonical slider definitions shared by browser and server.
 - `shared/print-settings.mjs`: canonical print-height range shared by browser, validation, and CAD generation.
 - `shared/specimen.mjs`: canonical settings, biological descriptions, simplified CAD anatomy schema and generation/image prompts.
@@ -56,7 +57,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - `server/codex.mjs`: Codex app-server boundary.
 - `server/safe-error.mjs`: credential redaction for every user-visible or traced error string.
 - `server/model-refusals.mjs`: shared model-reply parsing, evidence-based refusal classification, redacted excerpts and stage-specific recovery messages.
-- `server/store.mjs`: SQLite and specimen-asset persistence.
+- `server/store.mjs`: SQLite and specimen-asset persistence, including the validated email sign-in list.
 - `server/portrait-assets.mjs` and `server/model-assets.mjs`: full image decoding/PNG normalization, preserved portrait versions and immutable CAD asset sets.
 - `server/geometry.mjs`: solid geometry, STL, and OpenSCAD generation.
 - `server/sculpt-head.mjs`: connected head, eyes, horns and antennae shared by the STL/SCAD recipe.
@@ -101,6 +102,7 @@ Vanilla JavaScript/Vite frontend with an Express server and SQLite persistence. 
 - On phones (≤750px) `.specimen-stage` is `display: contents` and the workspace children are ordered: controls, status, portrait, field notes, action cards, print files. Three.js is loaded with a dynamic import when the 3D tab opens; keep `viewer.js` out of static imports.
 - Owner app settings persist under `app_metadata` key `app-settings`, merge older records over shared defaults, and apply through injected getters without restart. Defaults are five timing samples, six-minute cutoff, 130-second initial estimate, ten-minute provider turn timeout, three design attempts, two CAD repair retries (0–5), one CAD render/revise round (0–3; zero disables), three inspiration picks, six models/provider, hidden `ultra`, and fifteen-minute model freshness. Running turns and frozen job estimates keep their existing values. `GET`/`PUT /api/settings/app` return `{ values, efforts }`; `PUT` rejects hiding the saved generation effort. Status/connect expose only `{ maxAnimalInspirations, timingWindow }` in `config`.
 - Model/settings/statistics endpoints require owner access. Without `PUBLIC_ORIGIN`, localhost is the owner; public deployments identify the owner by `CRITTER_OWNER_EMAIL` matched against the Access email sign-in (`owner` session method in `server/login.mjs`).
+- The app owns the email sign-in allow list in `app_metadata` key `email-allow-list` (`{ emails, updatedAt }`), edited through owner-only `GET`/`PUT /api/settings/access`. Addresses are validated (at most 200, 254 characters each), trimmed, lowercased, deduplicated and sorted. `CRITTER_OWNER_EMAIL` is always allowed and is never saved in the list. Cloudflare Access only proves the email via its one-time PIN; it does not decide app membership. Email sessions bind the signed cookie to that address and recheck the list on every request, so removal revokes existing sessions. Legacy unbound email cookies require sign-in again; owner and passcode sessions are unchanged. Email sign-in exists only with `PUBLIC_ORIGIN`, but the list remains editable locally.
 - Text uses rem sizes at a 16px baseline and `html{font-size:120%}` for a browser-relative 20% increase; `src/style.css` owns the app scale/tokens, mirrored by the script-free sign-in page.
 - The theme is dark by default with a Light/Dark segmented radio switch (icons only at ≤600px, 44px touch targets); colors are OKLCH tokens in `src/style.css` driven by the hue/chroma knobs (same scheme as health-calendar). Theme logic lives in `src/theme.js`; there is no inline boot script because the CSP forbids it.
 - The knob values come from the active theme, chosen in theme-kit's shared Appearance & Theme Editor pane (Jacob, 2026-10-31) so a theme copied from Fieldwork pastes here and every viewer sees the owner's choice. The server writes the active knobs into each app page as `<style id="theme-knobs">` (the CSP allows inline styles, not scripts), so visitors never see the default colors first. Editor changes belong in theme-kit and arrive through its `npm run fanout`.

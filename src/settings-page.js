@@ -1,4 +1,5 @@
 import { createAppSettingsCard } from './app-settings-card.js';
+import { createAccessListCard } from './access-list-card.js';
 import { draftFromActive } from 'theme-kit/core';
 import { builtinThemes } from '../shared/appearance.mjs';
 import { getAppearance, loadAppearance, subscribeAppearance } from './appearance.js';
@@ -106,7 +107,7 @@ function render(section, state) {
   section.innerHTML = `<div class="collection-heading"><h2>Settings</h2></div>
     <p class="settings-error" role="alert">${escape(state.error)}</p>
     ${state.loading ? '<p class="settings-note" role="status">Loading settings…</p>' : ''}
-    ${state.catalog ? `<div class="settings-grid">${generationCard(state)}${state.app.render(state.loading || state.refreshing || state.saving)}${appearanceCard()}${statsCard(state.stats, state.app.values)}</div>` : ''}`;
+    ${state.catalog ? `<div class="settings-grid">${generationCard(state)}${state.app.render(state.loading || state.refreshing || state.saving)}${state.access.render(state.loading)}${appearanceCard()}${statsCard(state.stats, state.app.values)}</div>` : ''}`;
 }
 
 async function fetchModels(state, refresh, update) {
@@ -136,11 +137,12 @@ export function mountSettingsPage(byId, { onError, onSaved = () => {} }) {
     const [, stats] = await Promise.all([fetchModels(state, false, update), api('/api/stats')]);
     state.stats = stats; await onSaved();
   } });
+  state.access = createAccessListCard({ update });
   async function show() {
-    if (state.loading || state.refreshing || state.saving || state.app.saving) return;
+    if (state.loading || state.refreshing || state.saving || state.app.saving || state.access.saving) return;
     state.loading = true; state.error = ''; state.saved = ''; update();
     try {
-      const [models, stats] = await Promise.all([api(modelsUrl), api('/api/stats'), state.app.load(), loadAppearance()]);
+      const [models, stats] = await Promise.all([api(modelsUrl), api('/api/stats'), state.app.load(), state.access.load(), loadAppearance()]);
       state.catalog = models.catalog; state.selection = models.selection;
       state.draft = { ...models.selection }; state.stats = stats; chooseModel(state);
       if (models.catalog.refreshing) await fetchModels(state, false, update);
@@ -165,8 +167,14 @@ export function mountSettingsPage(byId, { onError, onSaved = () => {} }) {
     } catch (error) { fail(error); }
     finally { state.saving = false; update(); }
   }
-  section.onsubmit = event => event.target?.id === 'app-settings-form' ? state.app.save(event) : save(event);
+  section.onsubmit = event => {
+    if (event.target?.id === 'access-list-form') {
+      state.access.add(event); section.querySelector('#access-email')?.focus();
+    } else if (event.target?.id === 'app-settings-form') return state.app.save(event);
+    else return save(event);
+  };
   section.oninput = event => {
+    if (state.access.change(event.target)) return;
     if (state.app.change(event.target)) section.querySelector('#app-settings-status').textContent = '';
   };
   section.onchange = event => {
@@ -177,6 +185,7 @@ export function mountSettingsPage(byId, { onError, onSaved = () => {} }) {
     state.saved = ''; chooseModel(state); update();
   };
   section.onclick = event => {
+    if (state.access.click(event.target)) return;
     if (event.target.closest('#settings-refresh')) void refresh();
     if (event.target.closest('#app-settings-reset')) state.app.reset();
     if (event.target.closest('#open-theme-editor')) void import('./theme-editor.js').then(editor => editor.showThemeEditor()).catch(fail);

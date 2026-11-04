@@ -64,6 +64,7 @@ async function settingsFixture(t, { providers, selection }) {
     let body;
     if (url === '/api/models') body = { catalog: { providers, refreshing: false }, selection };
     else if (url === '/api/settings/app') body = { values: structuredClone(DEFAULT_APP_SETTINGS), efforts: ['low', 'medium', 'high', 'max', 'ultra'] };
+    else if (url === '/api/settings/access') body = { emails: [], owner: null, emailSignIn: false };
     else if (url === '/api/stats') body = { recent: [], totals: [], durations: [], byModel: [] };
     else if (url === '/api/appearance') body = { active: defaultActiveTheme(), themes: [] };
     else if (url === '/api/settings/generation' && options.method === 'PUT') {

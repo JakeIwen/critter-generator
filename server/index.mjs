@@ -26,7 +26,8 @@ const distRoot = process.env.CRITTER_DIST_DIR || path.join(root, 'dist');
 // Host, port and login environment stay deployment-owned: web edits could lock the owner out.
 const port = Number(process.env.PORT || 4329);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('PORT must be an integer from 1024 to 65535.');
-const store = new Store(process.env.CRITTER_DATA_DIR || path.join(root, '.local'));
+const ownerEmail = process.env.CRITTER_OWNER_EMAIL?.trim().toLowerCase() || null;
+const store = new Store(process.env.CRITTER_DATA_DIR || path.join(root, '.local'), { ownerEmail });
 const workspace = path.join(store.root, 'workspace');
 const getSettings = () => store.appSettings();
 const codex = new Codex(workspace, { getSettings });
@@ -45,7 +46,7 @@ const publicOrigin = process.env.PUBLIC_ORIGIN ? new URL(process.env.PUBLIC_ORIG
 // Login rate limits stay fixed security policy, never owner-adjustable preferences.
 const login = publicOrigin ? createLogin({ publicOrigin, passcode: process.env.CRITTER_PASSCODE,
   verifyAccess: createAccessVerifier({ teamDomain: process.env.ACCESS_TEAM_DOMAIN, audience: process.env.ACCESS_AUD }),
-  ownerEmail: process.env.CRITTER_OWNER_EMAIL, secretFile: path.join(store.root, 'session-secret') }) : null;
+  ownerEmail, allowedEmails: () => store.emailAllowList().emails, secretFile: path.join(store.root, 'session-secret') }) : null;
 const isOwner = req => login ? login.isOwner(req) : true;
 if (publicOrigin) origins.add(publicOrigin.origin);
 const isPublicHost = req => publicOrigin && req.headers.host === publicOrigin.host;
@@ -103,7 +104,7 @@ app.post('/api/connect', async (req, res) => {
     res.json(connectionStatus(req));
   } catch (e) { res.status(503).json({ error: safeError(e) }); }
 });
-app.use(createSettingsRoutes({ store, catalog, isOwner }));
+app.use(createSettingsRoutes({ store, catalog, isOwner, ownerEmail, emailSignIn: Boolean(publicOrigin) }));
 app.use(createAppearanceRoutes({ store, isOwner }));
 app.use(createSpecimenRoutes({ store, jobs, isOwner }));
 

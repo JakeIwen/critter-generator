@@ -30,6 +30,24 @@ test('SQLite retains creatures and jobs across restart and ignores stale legacy 
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
+test('email sign-in lists default empty, validate before saving and persist normalized addresses across restart', t => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'critter-access-store-'));
+  const ownerEmail = 'owner@example.test';
+  let store = new Store(root, { ownerEmail: '  OWNER@Example.Test  ' });
+  t.after(() => { store.db.close(); rmSync(root, { recursive: true, force: true }); });
+  assert.deepEqual(store.emailAllowList(), { emails: [], updatedAt: null });
+  const saved = store.saveEmailAllowList([' ZED@example.test ', 'alpha@example.test', 'Alpha@Example.Test', ownerEmail]);
+  assert.deepEqual(saved.emails, ['alpha@example.test', 'zed@example.test']);
+  assert(Number.isFinite(Date.parse(saved.updatedAt)));
+  assert.deepEqual(store.metadata('email-allow-list'), saved);
+  assert.throws(() => store.saveEmailAllowList(['invalid']));
+  assert.throws(() => store.saveEmailAllowList(Array(201).fill('guest@example.test')));
+  assert.deepEqual(store.emailAllowList(), saved);
+  store.db.close(); store = new Store(root, { ownerEmail });
+  assert.deepEqual(store.emailAllowList(), saved);
+  assert.deepEqual(store.saveEmailAllowList([]).emails, []);
+});
+
 test('model worker persists 500 mm exports without a baseplate and defaults older calls to a baseplate', async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'critter-model-store-'));
   const store = new Store(root);
