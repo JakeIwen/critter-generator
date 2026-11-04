@@ -107,7 +107,7 @@ function render(section, state) {
   section.innerHTML = `<div class="collection-heading"><h2>Settings</h2></div>
     <p class="settings-error" role="alert">${escape(state.error)}</p>
     ${state.loading ? '<p class="settings-note" role="status">Loading settings…</p>' : ''}
-    ${state.catalog ? `<div class="settings-grid">${generationCard(state)}${state.app.render(state.loading || state.refreshing || state.saving)}${state.access.render(state.loading)}${appearanceCard()}${statsCard(state.stats, state.app.values)}</div>` : ''}`;
+    ${state.catalog ? `<div class="settings-grid"><div class="settings-column">${generationCard(state)}${appearanceCard()}</div>${state.app.render(state.loading || state.refreshing || state.saving)}${state.access.render(state.loading)}${statsCard(state.stats, state.app.values)}</div>` : ''}`;
 }
 
 async function fetchModels(state, refresh, update) {
