@@ -24,24 +24,28 @@ function portraitControls(specimen) {
   </section>`;
 }
 
-function cadControls(specimen) {
+function cadControls(specimen, open) {
   if (!specimen.image) return '';
   const available = hasPrintModel(specimen), stale = available && cadIsStale(specimen);
   const height = specimen.print?.height ?? specimen.settings?.height ?? PRINT_HEIGHT.initial;
   const baseplate = specimen.print?.baseplate ?? specimen.settings?.baseplate ?? true;
   const state = stale ? 'Out of date' : available ? 'Matches portrait' : 'Not generated';
-  return `<section class="cad-controls card" aria-label="Generate printable CAD"><div class="action-heading"><h3>3D print / CAD <span class="info-hint" tabindex="0" title="Create a simplified printable interpretation of this portrait. Fine membranes, wings, fins and other structures may be approximated.">?</span></h3><span class="cad-status${stale ? ' stale' : ''}">${state}</span></div>
+  // Collapsed by default: most visits are about the portrait, and CAD is an occasional, explicit step.
+  return `<details id="cad-details" class="cad-controls card" data-specimen="${escape(specimen.id)}"${open ? ' open' : ''}><summary class="action-heading"><h3>3D print / CAD <span class="info-hint" tabindex="0" title="Create a simplified printable interpretation of this portrait. Fine membranes, wings, fins and other structures may be approximated.">?</span></h3><span class="cad-status${stale ? ' stale' : ''}">${state}</span></summary>
     ${stale ? `<p class="cad-stale-note">Existing files use portrait v${escape(specimen.print.sourcePortraitVersion ?? 1)}. The current portrait is v${portraitVersionOf(specimen)}.</p>` : ''}
     ${specimen.cadError ? `<p class="inline-error">CAD incomplete: ${escape(specimen.cadError)}</p>` : ''}
     ${specimen.print?.approximationNotes?.length ? `<details><summary>CAD approximations</summary><ul>${specimen.print.approximationNotes.map(note => `<li>${escape(note)}</li>`).join('')}</ul></details>` : ''}
     <form id="cad-form"><div class="height-control"><label for="cad-height">Print height</label><div><input id="cad-height" type="number" value="${escape(height)}" min="${PRINT_HEIGHT.min}" max="${PRINT_HEIGHT.max}" step="1" required data-specimen-action/><span>mm</span></div></div><label class="baseplate-control" for="cad-baseplate"><input id="cad-baseplate" type="checkbox"${baseplate ? ' checked' : ''} data-specimen-action/> Include baseplate</label><button id="generate-cad" class="button ${stale ? 'primary' : 'secondary'}" type="submit" data-specimen-action>${icon('cube',14)} ${available ? 'Regenerate CAD' : 'Generate CAD'}</button></form>
     ${actionProgressMarkup('cad', 'CAD generation progress')}
     ${available ? `<button id="view-cad" class="button secondary view-cad" type="button">${icon('cube',14)} View 3D model</button>` : ''}
-  </section>`;
+  </details>`;
 }
 
 export function renderSpecimenActions(byId, specimen, { busy, onPortrait, onCad, onViewModel }) {
-  byId('specimen-actions').innerHTML = portraitControls(specimen) + cadControls(specimen);
+  // Re-renders of the same specimen keep the CAD section as the visitor left it.
+  const previous = byId('cad-details');
+  const cadOpen = Boolean(previous?.open && previous.dataset.specimen === specimen.id);
+  byId('specimen-actions').innerHTML = portraitControls(specimen) + cadControls(specimen, cadOpen);
   byId('specimen-actions').classList.toggle('hidden', !specimen.image);
   if (byId('regenerate-portrait')) byId('regenerate-portrait').onclick = () => onPortrait(specimen, {}, 'regenerate-portrait');
   if (byId('portrait-edit-form')) byId('portrait-edit-form').onsubmit = event => {

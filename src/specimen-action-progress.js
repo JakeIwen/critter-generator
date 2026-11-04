@@ -15,6 +15,7 @@ export function createSpecimenActionProgress(byId, onCancel) {
     .map(id => [id, createActionProgress(byId, { id, onCancel })]));
   return (job, title, specimen) => {
     const current = job?.specimenId === specimen?.id ? job : null;
+    if (current?.kind === JOB_KINDS.CAD) byId('cad-details')?.setAttribute('open', '');
     cad.update(current?.kind === JOB_KINDS.CAD ? current : null, title);
     const buttonId = current?.actionButtonId || (specimen?.image ? 'regenerate-portrait' : 'empty-portrait');
     const action = portraitActions[buttonId];

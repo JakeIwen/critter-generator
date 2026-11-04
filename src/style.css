@@ -377,6 +377,11 @@ summary{cursor:pointer;line-height:1.6;font-size:0.6875rem;font-weight:600}
 .cad-status{font-size:0.5625rem;padding:5px 7px;border-radius:5px;background:var(--subtle);color:var(--success-ink)}
 .cad-status.stale,.stale-model{background:var(--warning-surface);color:var(--warning-ink)}
 .cad-stale-note{font-size:0.6875rem;color:var(--warning-ink);line-height:1.6;margin:10px 0 0}
+.cad-controls>summary{list-style:none;min-height:0;font-size:inherit;font-weight:inherit}
+.cad-controls>summary::-webkit-details-marker{display:none}
+.cad-controls>summary h3{margin-right:auto}
+.cad-controls>summary::after{content:'';width:8px;height:8px;border:solid var(--muted);border-width:0 2px 2px 0;transform:rotate(45deg);margin:0 4px 4px}
+.cad-controls[open]>summary::after{transform:rotate(-135deg);margin:4px 4px 0}
 .cad-controls .height-control{padding-top:12px;margin-top:12px}
 .cad-controls #generate-cad{margin-top:14px}
 .action-progress{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
